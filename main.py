@@ -9,6 +9,7 @@ from tkinter import filedialog, messagebox
 import threading
 import logging
 import os
+import subprocess
 import time
 import sys
 from PIL import Image, ImageTk
@@ -170,7 +171,7 @@ class AFKBotApp(ctk.CTk):
             row=17, column=0, padx=8, pady=2, sticky="ew")
 
         # ── Version ──
-        ctk.CTkLabel(sidebar, text="v1.0.0 • AFK Journey Bot",
+        ctk.CTkLabel(sidebar, text=f"v{config.APP_VERSION} • AFK Journey Bot",
                      font=ctk.CTkFont(size=9),
                      text_color=COLORS["text_muted"]).grid(
             row=21, column=0, padx=16, pady=(0, 12), sticky="sw")
@@ -442,14 +443,23 @@ class AFKBotApp(ctk.CTk):
         self.preview_label.configure(image=img, text="")
         self.preview_fps_lbl.configure(text=f"FPS: {fps:.1f}")
 
+    def _open_path(self, path: str):
+        """Mở thư mục tương thích đa nền tảng (Windows / macOS / Linux)."""
+        if sys.platform == "win32":
+            os.startfile(path)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", path])
+        else:
+            subprocess.Popen(["xdg-open", path])
+
     def _open_templates_dir(self):
         os.makedirs(config.TEMPLATES_DIR, exist_ok=True)
-        os.startfile(config.TEMPLATES_DIR)
+        self._open_path(config.TEMPLATES_DIR)
 
     def _open_log_dir(self):
         log_dir = os.path.dirname(config.LOG_FILE)
         os.makedirs(log_dir, exist_ok=True)
-        os.startfile(log_dir)
+        self._open_path(log_dir)
 
     def _open_template_manager(self):
         self.tab_view.set("🗺 Template")

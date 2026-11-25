@@ -3,11 +3,9 @@ State Machine - Logic bot AFK Journey
 
 Các State:
   IDLE          -> Chờ lệnh từ UI
-  LAUNCH_GAME   -> Mở game nếu chưa chạy
-  CHECK_POPUP   -> Kiểm tra và đóng popup quảng cáo
-  DAILY_QUEST   -> Click nhận quà Daily Quest
-  ARENA         -> Chạy vòng lặp trận Arena
-  GUILD         -> Điểm danh + đánh Guild Boss
+  LAUNCH_GAME   -> Tìm cửa sổ game đang chạy
+  CHECK_POPUP   -> Kiểm tra và đóng popup quảng cáo (nếu có)
+  AUTO_AFK      -> Chạy luồng Auto AFK bằng OCR + Neo tọa độ
   DONE          -> Hoàn thành tất cả task, về IDLE
   ERROR         -> Gặp lỗi, dừng bot
 """
@@ -21,6 +19,8 @@ from typing import Callable
 import config
 from vision import ScreenCapture, ImageMatcher
 from controller import Controller
+from ocr_engine import OcrEngine
+from window_manager import findGameWindow, getClientRectScreen, focusGameWindow
 from modules.auto_afk import run_auto_afk
 
 logger = logging.getLogger("AFK_Bot")
@@ -44,10 +44,12 @@ class BotEngine:
     def __init__(self, log_callback: Callable[[str], None] = None):
         self.capture = ScreenCapture()
         self.matcher = ImageMatcher(config.TEMPLATES_DIR, config.MATCH_THRESHOLD)
+        self.ocr = OcrEngine(config.OCR_FUZZY_THRESHOLD)
         self.ctrl = Controller(delay_after_click=config.DELAY_AFTER_CLICK)
 
         self.log_callback = log_callback or (lambda msg: None)
         self.state = State.IDLE
+        self.gameHwnd: int | None = None
 
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -56,7 +58,7 @@ class BotEngine:
         self.task_auto_afk = True
 
         # Trạng thái tiến trình
-        self.progress_callback: Callable[[str, int, int], None] | None = None  # (task, done, total)
+        self.progress_callback: Callable[[str, int, int], None] | None = None
 
     # ────────────────────────────────────────────
     #  Public API (gọi từ UI thread)
@@ -71,7 +73,7 @@ class BotEngine:
         self.state = State.LAUNCH_GAME
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name="BotEngine")
         self._thread.start()
-        self._log("🚀 Bot đã khởi động!")
+        self._log("🚀 Bot đã khởi động (Chế độ OCR - không cần template)!")
 
     def stop(self):
         """Dừng bot (graceful)"""
@@ -80,6 +82,18 @@ class BotEngine:
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
+
+    def captureGameScreen(self):
+        """
+        Chụp riêng vùng client của cửa sổ game AFK Journey.
+        Trả về (image_bgr, originX, originY, rect).
+        """
+        hwnd = findGameWindow(config.GAME_WINDOW_TITLE)
+        if hwnd:
+            self.gameHwnd = hwnd
+        rect = getClientRectScreen(self.gameHwnd) if self.gameHwnd else None
+        img, originX, originY = self.capture.capture_window(rect)
+        return img, originX, originY, rect
 
     # ────────────────────────────────────────────
     #  Main Loop
@@ -115,68 +129,63 @@ class BotEngine:
     # ────────────────────────────────────────────
 
     def _state_launch_game(self):
-        self._log("🎮 Kiểm tra game đang chạy...")
+        self._log("🎮 Kiểm tra cửa sổ game đang chạy...")
 
-        # Thử tìm màn hình Home của game (game đã mở sẵn)
-        screen = self.capture.capture_full()
-        home = self.matcher.find(screen, "home_indicator")
-        if home:
-            self._log("✅ Game đang mở, tiếp tục...")
-            self.state = State.CHECK_POPUP
-            return
+        hwnd = findGameWindow(config.GAME_WINDOW_TITLE)
+        if hwnd:
+            self.gameHwnd = hwnd
+            focusGameWindow(hwnd)
+            time.sleep(0.3)
+            rect = getClientRectScreen(hwnd)
+            if rect:
+                self._log(f"✅ Đã bắt được cửa sổ '{config.GAME_WINDOW_TITLE}' ({rect[2]}x{rect[3]}), tiếp tục...")
+                self.state = State.CHECK_POPUP
+                return
 
-        # Game chưa mở → Hiện popup yêu cầu người dùng mở game thủ công
-        self._log("⚠️ Không tìm thấy game! Đang chờ người dùng mở game...")
-        
-        # Vì bot chạy trên thread phụ, chúng ta hiển thị messagebox thông qua tkinter.
-        # Để tránh các vấn đề luồng, ta có thể dùng messagebox trực tiếp nhưng nó có thể lock thread phụ.
-        # Nhấp chuột OK trên popup sẽ giúp bot tiếp tục kiểm tra lại.
+        # Game chưa mở → Hiện popup yêu cầu người dùng mở game
+        self._log("⚠️ Không tìm thấy cửa sổ game! Đang chờ người dùng mở game...")
+
         import tkinter as tk
         from tkinter import messagebox
 
-        # Tạo một root ẩn tạm thời hoặc dùng dialog để show message
         root = tk.Tk()
-        root.withdraw() # Ẩn cửa sổ chính
-        root.attributes("-topmost", True) # Cho popup nổi lên trên cùng
+        root.withdraw()
+        root.attributes("-topmost", True)
         messagebox.showinfo(
             "Yêu cầu mở game",
-            "Không tìm thấy game AFK Journey đang chạy (home_indicator).\n\n"
+            f"Không tìm thấy cửa sổ '{config.GAME_WINDOW_TITLE}' đang mở.\n\n"
             "Vui lòng:\n"
             "1. Mở game AFK Journey lên (qua Launcher hoặc trực tiếp).\n"
-            "2. Đảm bảo game đã tải xong vào sảnh chính.\n"
-            "3. Bấm OK dưới đây để bot tiếp tục kiểm tra.",
-            parent=root
+            "2. Đảm bảo game đã vào sảnh chính và không bị thu nhỏ.\n"
+            "3. Bấm OK dưới đây để bot tiếp tục.",
+            parent=root,
         )
         root.destroy()
 
-        # Sau khi người dùng click OK, loop sẽ chạy lại state này để check xem game đã được mở chưa.
         self._log("🔄 Người dùng xác nhận đã mở game, kiểm tra lại...")
 
-
     def _state_check_popup(self):
-        """Đóng các popup quảng cáo nếu có"""
+        """Đóng các popup quảng cáo nếu có (dùng template fallback nếu người dùng có sẵn)"""
         self._log("🔍 Kiểm tra popup quảng cáo...")
-        screen = self.capture.capture_full()
+        screen, originX, originY, _ = self.captureGameScreen()
 
         popup_templates = ["popup_close", "popup_x", "btn_close", "btn_cancel"]
         result = self.matcher.find_any(screen, popup_templates)
 
         if result:
-            name, cx, cy, conf = result
-            self._log(f"🗑️ Đóng popup '{name}' tại ({cx},{cy})")
-            self.ctrl.click(cx, cy, delay=config.DELAY_AFTER_CLICK)
-            # Check lại lần nữa
+            name, cx, cy, _ = result
+            self._log(f"🗑️ Đóng popup '{name}' tại ({cx + originX},{cy + originY})")
+            self.ctrl.click(cx + originX, cy + originY, delay=config.DELAY_AFTER_CLICK)
             time.sleep(0.5)
-            screen = self.capture.capture_full()
-            result2 = self.matcher.find_any(screen, popup_templates)
+            screen2, ox2, oy2, _ = self.captureGameScreen()
+            result2 = self.matcher.find_any(screen2, popup_templates)
             if result2:
                 name2, cx2, cy2, _ = result2
                 self._log(f"🗑️ Đóng thêm popup '{name2}'")
-                self.ctrl.click(cx2, cy2, delay=config.DELAY_AFTER_CLICK)
+                self.ctrl.click(cx2 + ox2, cy2 + oy2, delay=config.DELAY_AFTER_CLICK)
         else:
             self._log("✅ Không có popup")
 
-        # Quyết định state tiếp theo
         if self.task_auto_afk:
             self.state = State.AUTO_AFK
         else:
@@ -192,6 +201,7 @@ class BotEngine:
                 self._log("⚠️ Auto AFK dừng giữa chừng hoặc gặp sự cố.")
         except Exception as e:
             self._log(f"❌ Lỗi khi chạy Auto AFK: {e}")
+            logger.exception("Lỗi trong run_auto_afk")
         self.state = State.DONE
 
     # ────────────────────────────────────────────
@@ -203,7 +213,3 @@ class BotEngine:
         full_msg = f"[{timestamp}] {msg}"
         logger.info(msg)
         self.log_callback(full_msg)
-
-
-
-

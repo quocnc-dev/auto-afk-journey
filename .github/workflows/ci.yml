@@ -1,0 +1,118 @@
+name: Cross-Platform Build & Release
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build trên ${{ matrix.os-name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            os-name: macOS (Apple Silicon ARM64)
+            artifact_name: afk-journey-bot-macos-arm64
+            release_asset: afk-journey-bot-macos-arm64.zip
+            add_data_sep: ":"
+          - os: windows-latest
+            os-name: Windows (x64)
+            artifact_name: afk-journey-bot-windows-x64
+            release_asset: afk-journey-bot-windows-x64.zip
+            add_data_sep: ";"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Kiểm tra mã nguồn
+        uses: actions/checkout@v4
+
+      - name: Cài đặt Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Cài đặt thư viện phụ thuộc & PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Chạy unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Đóng gói ứng dụng bằng PyInstaller
+        shell: bash
+        run: |
+          python -m PyInstaller --noconfirm --onedir --windowed \
+            --name "AFKJourneyBot" \
+            --collect-all rapidocr_onnxruntime \
+            --collect-all customtkinter \
+            --add-data "templates${{ matrix.add_data_sep }}templates" \
+            main.py
+
+      - name: Nén file phát hành (macOS .app)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent dist/AFKJourneyBot.app "dist/${{ matrix.release_asset }}"
+
+      - name: Nén file phát hành (Windows .exe)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/AFKJourneyBot" -DestinationPath "dist/${{ matrix.release_asset }}" -Force
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/${{ matrix.release_asset }}
+          if-no-files-found: error
+
+  publish-release:
+    name: Tự động phát hành GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kiểm tra mã nguồn để đọc phiên bản
+        uses: actions/checkout@v4
+
+      - name: Tải toàn bộ artifacts đã build
+        uses: actions/download-artifact@v4
+        with:
+          path: release_assets
+          merge-multiple: true
+
+      - name: Xác định tag và tiêu đề Release
+        id: release_meta
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          else
+            PKG_VERSION=$(grep '^APP_VERSION' config.py | head -n1 | cut -d '"' -f2)
+            TAG_NAME="v${PKG_VERSION}-build.${{ github.run_number }}"
+          fi
+          echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "title=Release ${TAG_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Xuất bản Release chính thức trên GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.title }}
+          prerelease: false
+          generate_release_notes: true
+          files: release_assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

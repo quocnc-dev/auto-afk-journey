@@ -1,5 +1,5 @@
 """
-Module chụp màn hình và nhận diện ảnh (Template Matching)
+Module chụp màn hình và nhận diện ảnh (hỗ trợ chụp riêng cửa sổ game và template fallback)
 """
 
 import cv2
@@ -13,7 +13,7 @@ logger = logging.getLogger("AFK_Bot")
 
 
 class ScreenCapture:
-    """Chụp toàn bộ màn hình hoặc vùng chỉ định bằng MSS (tốc độ cao)"""
+    """Chụp toàn màn hình hoặc đúng vùng cửa sổ game bằng MSS (tốc độ cao)"""
 
     def __init__(self):
         self.sct = mss.mss()
@@ -32,13 +32,32 @@ class ScreenCapture:
             img = np.array(pil_img)
             return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
-
     def capture_region(self, x: int, y: int, w: int, h: int) -> np.ndarray:
-        """Chụp vùng chỉ định"""
-        region = {"top": y, "left": x, "width": w, "height": h}
-        shot = self.sct.grab(region)
-        img = np.array(shot)
-        return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        """Chụp vùng chỉ định theo tọa độ màn hình thật"""
+        region = {"top": int(y), "left": int(x), "width": int(w), "height": int(h)}
+        try:
+            shot = self.sct.grab(region)
+            img = np.array(shot)
+            return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        except Exception:
+            from PIL import ImageGrab
+            pil_img = ImageGrab.grab(bbox=(int(x), int(y), int(x + w), int(y + h)))
+            img = np.array(pil_img)
+            return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+    def capture_window(self, rect: tuple[int, int, int, int] | None) -> tuple[np.ndarray, int, int]:
+        """
+        Chụp vùng client của cửa sổ game nếu có rect=(left, top, w, h).
+        Tự động chuẩn hóa kích thước về (w, h) logic (chống lệch tọa độ Retina trên macOS).
+        Trả về (image_bgr, origin_x, origin_y). Nếu rect=None thì fallback chụp toàn màn hình.
+        """
+        if rect is not None:
+            left, top, w, h = rect
+            img = self.capture_region(left, top, w, h)
+            if img.shape[1] != w or img.shape[0] != h:
+                img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
+            return (img, left, top)
+        return (self.capture_full(), 0, 0)
 
     def get_screen_size(self):
         monitor = self.sct.monitors[1]
@@ -46,7 +65,7 @@ class ScreenCapture:
 
 
 class ImageMatcher:
-    """Tìm kiếm template trong ảnh màn hình bằng OpenCV Template Matching"""
+    """Tìm kiếm template trong ảnh màn hình bằng OpenCV Template Matching (tùy chọn fallback)"""
 
     def __init__(self, templates_dir: str, threshold: float = 0.80):
         self.templates_dir = templates_dir
@@ -58,7 +77,6 @@ class ImageMatcher:
         if name in self._cache:
             return self._cache[name]
 
-        # Tìm file ảnh theo tên (hỗ trợ .png, .jpg)
         for ext in [".png", ".jpg", ".jpeg"]:
             path = os.path.join(self.templates_dir, name + ext)
             if os.path.exists(path):
@@ -68,7 +86,7 @@ class ImageMatcher:
                     logger.debug(f"Đã load template: {path}")
                     return tpl
 
-        logger.warning(f"Không tìm thấy template: {name}")
+        logger.debug(f"Không có template fallback: {name}")
         return None
 
     def find(self, screen: np.ndarray, template_name: str, threshold: float = None) -> tuple | None:
@@ -81,10 +99,11 @@ class ImageMatcher:
             return None
 
         thresh = threshold if threshold is not None else self.threshold
-
-        # Grayscale để nhanh hơn
         screen_gray = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
         tpl_gray = cv2.cvtColor(tpl, cv2.COLOR_BGR2GRAY)
+
+        if screen_gray.shape[0] < tpl_gray.shape[0] or screen_gray.shape[1] < tpl_gray.shape[1]:
+            return None
 
         result = cv2.matchTemplate(screen_gray, tpl_gray, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
@@ -93,17 +112,11 @@ class ImageMatcher:
             h, w = tpl_gray.shape
             cx = max_loc[0] + w // 2
             cy = max_loc[1] + h // 2
-            logger.debug(f"Tìm thấy '{template_name}' tại ({cx}, {cy}), conf={max_val:.2f}")
             return (cx, cy, max_val)
-
-        logger.debug(f"Không tìm thấy '{template_name}' (max_conf={max_val:.2f} < {thresh})")
         return None
 
     def find_any(self, screen: np.ndarray, template_names: list, threshold: float = None) -> tuple | None:
-        """
-        Tìm bất kỳ template nào trong danh sách.
-        Trả về (template_name, cx, cy, confidence) hoặc None.
-        """
+        """Tìm bất kỳ template nào trong danh sách."""
         for name in template_names:
             result = self.find(screen, name, threshold)
             if result:
@@ -120,10 +133,7 @@ class ImageMatcher:
         threshold: float = None,
         stop_event=None,
     ) -> tuple | None:
-        """
-        Chờ cho đến khi template xuất hiện trên màn hình.
-        Trả về (cx, cy, conf) hoặc None nếu timeout.
-        """
+        """Chờ cho đến khi template xuất hiện trên màn hình."""
         deadline = time.time() + timeout
         while time.time() < deadline:
             if stop_event and stop_event.is_set():
@@ -133,35 +143,9 @@ class ImageMatcher:
             if result:
                 return result
             time.sleep(interval)
-        logger.warning(f"Timeout chờ template '{template_name}' sau {timeout}s")
-        return None
-
-    def wait_for_any(
-        self,
-        capture_fn,
-        template_names: list,
-        timeout: float = 30,
-        interval: float = 0.5,
-        threshold: float = None,
-        stop_event=None,
-    ) -> tuple | None:
-        """Chờ bất kỳ template nào trong list xuất hiện"""
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            if stop_event and stop_event.is_set():
-                return None
-            screen = capture_fn()
-            result = self.find_any(screen, template_names, threshold)
-            if result:
-                return result
-            time.sleep(interval)
         return None
 
     def reload_cache(self):
         """Xóa cache để reload template từ disk"""
         self._cache.clear()
         logger.info("Đã reload template cache")
-
-
-
-
