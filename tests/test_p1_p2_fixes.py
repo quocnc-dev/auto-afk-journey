@@ -1,4 +1,4 @@
-"""Unit tests kiểm chứng 6 lỗi P1/P2 mới nhất (cửa sổ, Stop 50ms, SendInput, timeout kết quả, ImageGrab, Huyền Linh)."""
+"""Unit tests kiểm chứng các lỗi P1/P2 (cửa sổ, foreground, Stop 50ms, SendInput click, timeout kết quả)."""
 
 import os
 import sys
@@ -25,23 +25,24 @@ def _item(raw: str, cx: int = 200, cy: int = 200) -> OcrItem:
 
 
 class TestP1P2Fixes(unittest.TestCase):
-    """Kiểm thử các ca hồi quy cho 2 lỗi P1 và 4 lỗi P2."""
+    """Kiểm thử các ca hồi quy cho P1 và P2."""
 
     @classmethod
     def setUpClass(cls):
         cls.ocr = OcrEngine()
         cls.tplDir = config.TEMPLATES_DIR
 
-    def test_exact_window_title_rejects_browser_and_occluded_window(self):
+    def test_exact_window_title_and_rect_shift_guard(self):
         self.assertFalse(window_manager.isExactGameTitle("AFK Journey guide - Mozilla Firefox", "AFK Journey"))
         self.assertTrue(window_manager.isExactGameTitle("AFK Journey", "AFK Journey"))
         self.assertTrue(window_manager.isExactGameTitle("AFKJourney", "AFK Journey"))
 
-        # BotEngine phải từ chối chụp và từ chối click nếu mất focus hoặc điểm click nằm ngoài cửa sổ mới
         eng = bot_engine.BotEngine()
-        origFind = bot_engine.findGameWindow
-        origFg = bot_engine.isWindowForeground
-        origRect = bot_engine.getClientRectScreen
+        origFind, origFg, origRect = (
+            bot_engine.findGameWindow,
+            bot_engine.isWindowForeground,
+            bot_engine.getClientRectScreen,
+        )
         try:
             bot_engine.findGameWindow = lambda _: 1234
             bot_engine.isWindowForeground = lambda _: False
@@ -49,63 +50,155 @@ class TestP1P2Fixes(unittest.TestCase):
             img, _, _, rect = eng.captureGameScreen()
             self.assertIsNone(img)
             self.assertIsNone(rect)
-            self.assertFalse(eng.canInteractAt(200, 200))
+            self.assertFalse(eng.canInteractAt(200, 200, expectedRect=(100, 100, 800, 600)))
 
-            # Khi đang foreground nhưng cửa sổ đã dịch chuyển khỏi tọa độ click cũ
+            # Cửa sổ dịch nhẹ từ (100,100,800,600) -> (110,105,800,600): điểm cũ (200,200) vẫn trong rect mới nhưng phải bị từ chối
             bot_engine.isWindowForeground = lambda _: True
-            bot_engine.getClientRectScreen = lambda _: (900, 500, 400, 300)
-            self.assertFalse(eng.canInteractAt(200, 200))
-            self.assertTrue(eng.canInteractAt(1000, 600))
+            bot_engine.getClientRectScreen = lambda _: (110, 105, 800, 600)
+            self.assertFalse(eng.canInteractAt(200, 200, expectedRect=(100, 100, 800, 600)))
+            self.assertTrue(eng.canInteractAt(200, 200, expectedRect=(110, 105, 800, 600)))
         finally:
-            bot_engine.findGameWindow = origFind
-            bot_engine.isWindowForeground = origFg
-            bot_engine.getClientRectScreen = origRect
+            bot_engine.findGameWindow, bot_engine.isWindowForeground, bot_engine.getClientRectScreen = (
+                origFind,
+                origFg,
+                origRect,
+            )
 
-    def test_controller_stop_during_50ms_wait_and_sendinput_fail(self):
+    def test_controller_stop_and_focus_loss_during_50ms_wait(self):
         ctrl = controller.Controller(delay_after_click=0.01)
         clicked = []
-        origBackend = controller._inputBackend
-        origMove = controller._moveCursor
-        origSleepWait = controller._sleepWithStop
-
-        controller._inputBackend = types.SimpleNamespace(
-            click=lambda button="left": clicked.append(button),
-            doubleClick=lambda: clicked.append("double"),
+        origClick, origMove, origSleep = (
+            controller._sendMouseClick,
+            controller._moveCursor,
+            controller._sleepWithStop,
         )
+        controller._sendMouseClick = lambda btn="left": clicked.append(btn) or True
         try:
-            # 1. Đặt Stop ngay trong khoảng chờ 50ms sau khi di chuột -> click không được phép chạy
+            # 1. Stop đặt trong khoảng chờ 50ms -> hủy click
             stopEv = threading.Event()
             controller._moveCursor = lambda x, y: True
 
-            def fakeSleep(sec, ev=None):
+            def stopInSleep(sec, ev=None):
                 if ev is not None:
                     ev.set()
                 return False
 
-            controller._sleepWithStop = fakeSleep
-            res = ctrl.click(100, 200, stop_event=stopEv)
-            self.assertFalse(res)
+            controller._sleepWithStop = stopInSleep
+            self.assertFalse(ctrl.click(100, 200, stop_event=stopEv))
             self.assertEqual(clicked, [])
 
-            # 2. _moveCursor thất bại (ví dụ SendInput trả về 0) -> không gọi click
-            controller._sleepWithStop = lambda sec, ev=None: True
-            controller._moveCursor = lambda x, y: False
-            res2 = ctrl.click(100, 200)
-            self.assertFalse(res2)
+            # 2. Game mất focus ngay sau khi di chuột (trong lúc chờ 50ms) -> guard_fn lần 2 chặn click
+            fgState = [True]
+
+            def loseFocusInSleep(sec, ev=None):
+                fgState[0] = False
+                return True
+
+            controller._sleepWithStop = loseFocusInSleep
+            self.assertFalse(ctrl.click(100, 200, guard_fn=lambda: fgState[0]))
             self.assertEqual(clicked, [])
         finally:
-            controller._inputBackend = origBackend
-            controller._moveCursor = origMove
-            controller._sleepWithStop = origSleepWait
+            controller._sendMouseClick, controller._moveCursor, controller._sleepWithStop = (
+                origClick,
+                origMove,
+                origSleep,
+            )
 
-    @unittest.skipUnless(sys.platform == "win32", "Kiểm tra SendInput trả 0 chỉ áp dụng trên Windows")
-    def test_win32_sendinput_zero_returns_false(self):
-        origSend = controller._inputBackend.SendInput
+    def test_popup_stop_after_move_and_escape_without_focus(self):
+        # 1. Đóng popup trong _state_check_popup bị Stop sau move -> không click
+        eng = bot_engine.BotEngine()
+        popupClicks = []
+        origFind, origFg, origRect, origCap = (
+            bot_engine.findGameWindow,
+            bot_engine.isWindowForeground,
+            bot_engine.getClientRectScreen,
+            eng.capture.capture_window,
+        )
+        origMove, origSendClick, origSleep = (
+            controller._moveCursor,
+            controller._sendMouseClick,
+            controller._sleepWithStop,
+        )
         try:
-            controller._inputBackend.SendInput = lambda *a, **kw: 0
-            self.assertFalse(controller._moveCursor(100, 100))
+            bot_engine.findGameWindow = lambda _: 1234
+            bot_engine.isWindowForeground = lambda _: True
+            bot_engine.getClientRectScreen = lambda _: (0, 0, 1280, 720)
+            eng.capture.capture_window = lambda rect: (np.zeros((720, 1280, 3), dtype=np.uint8), 0, 0)
+            eng.matcher.find_any = lambda screen, names: ("popup_close", 600, 300, 0.99)
+            controller._moveCursor = lambda x, y: True
+            controller._sendMouseClick = lambda btn="left": popupClicks.append(btn) or True
+
+            def stopDuring50ms(sec, ev=None):
+                eng._stop_event.set()
+                return False
+
+            controller._sleepWithStop = stopDuring50ms
+            eng._state_check_popup()
+            self.assertEqual(popupClicks, [])
+        finally:
+            bot_engine.findGameWindow, bot_engine.isWindowForeground, bot_engine.getClientRectScreen = (
+                origFind,
+                origFg,
+                origRect,
+            )
+            eng.capture.capture_window = origCap
+            controller._moveCursor, controller._sendMouseClick, controller._sleepWithStop = (
+                origMove,
+                origSendClick,
+                origSleep,
+            )
+
+        # 2. _safeEscape phải hủy ESC nếu game mất focus trong lúc OCR
+        bot = MockBot(self.ocr, [])
+        bot.canSendKey = lambda: False
+        self.assertFalse(auto_afk._safeEscape(bot))
+        self.assertEqual(bot.ctrl.escapes, 0)
+
+    def test_launch_game_prompts_when_foreground_denied(self):
+        prompts = []
+        eng = bot_engine.BotEngine(prompt_callback=lambda t, m: prompts.append((t, m)))
+        origFind, origFocus, origRect, origFg = (
+            bot_engine.findGameWindow,
+            bot_engine.focusGameWindow,
+            bot_engine.getClientRectScreen,
+            bot_engine.isWindowForeground,
+        )
+        try:
+            bot_engine.findGameWindow = lambda _: 999
+            bot_engine.focusGameWindow = lambda _: False
+            bot_engine.getClientRectScreen = lambda _: (0, 0, 1280, 720)
+            bot_engine.isWindowForeground = lambda _: False
+            eng.state = bot_engine.State.LAUNCH_GAME
+            eng._state_launch_game()
+            self.assertEqual(eng.state, bot_engine.State.LAUNCH_GAME)
+            self.assertEqual(len(prompts), 1)
+        finally:
+            (
+                bot_engine.findGameWindow,
+                bot_engine.focusGameWindow,
+                bot_engine.getClientRectScreen,
+                bot_engine.isWindowForeground,
+            ) = (origFind, origFocus, origRect, origFg)
+
+    @unittest.skipUnless(sys.platform == "win32", "Kiểm tra SendInput Windows")
+    def test_win32_sendinput_move_ok_click_zero_returns_false(self):
+        ctrl = controller.Controller(delay_after_click=0.01)
+        origSend = controller._inputBackend.SendInput
+        origSleep = controller._sleepWithStop
+        calls = [0]
+
+        def sendSideEffect(n, ptr, size):
+            calls[0] += 1
+            return 1 if calls[0] == 1 else 0
+
+        controller._inputBackend.SendInput = sendSideEffect
+        controller._sleepWithStop = lambda sec, ev=None: True
+        try:
+            self.assertFalse(ctrl.click(100, 100))
+            self.assertEqual(calls[0], 2)
         finally:
             controller._inputBackend.SendInput = origSend
+            controller._sleepWithStop = origSleep
 
     def test_stuck_victory_and_auto_complete_trigger_timeout(self):
         for fname in ["txt_victory.png", "txt_auto_battle_complete.png"]:
@@ -119,37 +212,24 @@ class TestP1P2Fixes(unittest.TestCase):
 
             bot = MockBot(self.ocr, [canvas] * 10)
             fakeNow = [0.0]
-
-            def advance():
-                fakeNow[0] += 500.0
-                return fakeNow[0]
-
             origTime, origWait = auto_afk.time.time, auto_afk._wait
-            auto_afk.time.time = advance
+            auto_afk.time.time = lambda: (fakeNow.__setitem__(0, fakeNow[0] + 500.0) or fakeNow[0])
             auto_afk._wait = lambda b, s: True
             try:
                 ok = auto_afk.run_auto_afk(bot)
             finally:
                 auto_afk.time.time, auto_afk._wait = origTime, origWait
-
             self.assertFalse(ok, f"{fname} lặp quá 35 phút phải timeout trả False")
 
     def test_pillow_fallback_uses_all_screens_true(self):
         cap = vision.ScreenCapture()
         grabCalls = []
         fakeImage = np.zeros((200, 300, 3), dtype=np.uint8)
-
-        class _FakeGrabMod:
-            @staticmethod
-            def grab(bbox=None, all_screens=False):
-                grabCalls.append((bbox, all_screens))
-                return fakeImage
-
         origGrab = cap.sct.grab
         from PIL import ImageGrab
         origPilGrab = ImageGrab.grab
         cap.sct.grab = lambda _: (_ for _ in ()).throw(RuntimeError("mss failed"))
-        ImageGrab.grab = _FakeGrabMod.grab
+        ImageGrab.grab = lambda bbox=None, all_screens=False: (grabCalls.append((bbox, all_screens)) or fakeImage)
         try:
             img = cap.capture_region(-1920, 100, 300, 200)
             self.assertEqual(img.shape, (200, 300, 3))
@@ -159,9 +239,7 @@ class TestP1P2Fixes(unittest.TestCase):
             ImageGrab.grab = origPilGrab
 
     def test_daily_challenge_does_not_match_huyen_linh(self):
-        items = [_item("Thách Đấu Hằng Ngày")]
-        hit = self.ocr.findText(items, config.OCR_KEYWORDS["challenge_hl"])
-        self.assertIsNone(hit)
+        self.assertIsNone(self.ocr.findText([_item("Thách Đấu Hằng Ngày")], config.OCR_KEYWORDS["challenge_hl"]))
 
 
 if __name__ == "__main__":

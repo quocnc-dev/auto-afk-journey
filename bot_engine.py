@@ -3,7 +3,7 @@ State Machine - Logic bot AFK Journey
 
 Các State:
   IDLE          -> Chờ lệnh từ UI
-  LAUNCH_GAME   -> Tìm cửa sổ game đang chạy
+  LAUNCH_GAME   -> Tìm cửa sổ game đang chạy và đang foreground
   CHECK_POPUP   -> Kiểm tra và đóng popup quảng cáo (nếu có)
   AUTO_AFK      -> Chạy luồng Auto AFK bằng OCR + Neo tọa độ
   DONE          -> Hoàn thành tất cả task, về IDLE
@@ -68,10 +68,6 @@ class BotEngine:
         self.task_auto_afk = True
         self.progress_callback: Callable[[str, int, int], None] | None = None
 
-    # ────────────────────────────────────────────
-    #  Public API (gọi từ UI thread)
-    # ────────────────────────────────────────────
-
     def start(self):
         """Bắt đầu chạy bot"""
         if self._thread and self._thread.is_alive():
@@ -106,19 +102,24 @@ class BotEngine:
         img, originX, originY = self.capture.capture_window(rect)
         return img, originX, originY, rect
 
-    def canInteractAt(self, x: int, y: int) -> bool:
-        """Kiểm tra lại cửa sổ game đang foreground và chứa điểm click (x, y) ngay trước khi bấm."""
+    def canInteractAt(self, x: int, y: int, expectedRect: tuple[int, int, int, int] | None = None) -> bool:
+        """Kiểm tra cửa sổ game đang foreground, đúng rect đã chụp và chứa điểm (x, y)."""
         if self._stop_event.is_set():
             return False
         hwnd = findGameWindow(config.GAME_WINDOW_TITLE)
         if not hwnd or not isWindowForeground(hwnd):
             return False
         rect = getClientRectScreen(hwnd)
+        if expectedRect is not None and rect != expectedRect:
+            return False
         return isPointInClientRect(rect, x, y)
 
-    # ────────────────────────────────────────────
-    #  Main Loop
-    # ────────────────────────────────────────────
+    def canSendKey(self) -> bool:
+        """Kiểm tra chưa Stop và cửa sổ game đang ở foreground trước khi gửi phím."""
+        if self._stop_event.is_set():
+            return False
+        hwnd = findGameWindow(config.GAME_WINDOW_TITLE)
+        return bool(hwnd) and isWindowForeground(hwnd)
 
     def _run_loop(self):
         try:
@@ -146,10 +147,6 @@ class BotEngine:
                 self.state = State.IDLE
             self._log("🔴 Bot đã dừng.")
 
-    # ────────────────────────────────────────────
-    #  States
-    # ────────────────────────────────────────────
-
     def _state_launch_game(self):
         self._log("🎮 Kiểm tra cửa sổ game đang chạy...")
 
@@ -160,51 +157,61 @@ class BotEngine:
             if self._stop_event.wait(0.3):
                 return
             rect = getClientRectScreen(hwnd)
-            if rect:
+            if rect and isWindowForeground(hwnd):
                 self._log(f"✅ Đã bắt được cửa sổ '{config.GAME_WINDOW_TITLE}' ({rect[2]}x{rect[3]}), tiếp tục...")
                 self.state = State.CHECK_POPUP
                 return
 
-        self._log("⚠️ Không tìm thấy cửa sổ game! Đang chờ người dùng mở game...")
+        # Game chưa mở hoặc hệ điều hành từ chối đưa lên foreground → báo người dùng
+        self._log("⚠️ Cửa sổ game chưa sẵn sàng hoặc chưa ở trên cùng! Đang chờ người dùng...")
         promptMsg = (
-            f"Không tìm thấy cửa sổ '{config.GAME_WINDOW_TITLE}' đang mở.\n\n"
+            f"Không thể tự đưa cửa sổ '{config.GAME_WINDOW_TITLE}' lên trên cùng hoặc game chưa mở.\n\n"
             "Vui lòng:\n"
-            "1. Mở game AFK Journey lên (qua Launcher hoặc trực tiếp).\n"
+            "1. Mở game AFK Journey lên và bấm chuột vào cửa sổ game để đưa lên trên cùng.\n"
             "2. Đảm bảo game đã vào sảnh chính và không bị thu nhỏ.\n"
             "3. Bấm OK dưới đây để bot tiếp tục."
         )
         if self.prompt_callback is not None:
-            self.prompt_callback("Yêu cầu mở game", promptMsg)
+            self.prompt_callback("Yêu cầu mở / focus game", promptMsg)
         else:
             self._stop_event.wait(3.0)
 
         self._log("🔄 Đang kiểm tra lại cửa sổ game...")
 
+    def _clickPopupTarget(self, label: str, tx: int, ty: int, expectedRect):
+        """Click đóng popup có kiểm tra stop_event và guard_fn ngay tại thời điểm bấm."""
+        self._log(f"🗑️ Đóng popup '{label}' tại ({tx},{ty})")
+        return self.ctrl.click(
+            tx,
+            ty,
+            delay=config.DELAY_AFTER_CLICK,
+            stop_event=self._stop_event,
+            guard_fn=lambda: self.canInteractAt(tx, ty, expectedRect=expectedRect),
+        )
+
     def _state_check_popup(self):
         """Đóng các popup quảng cáo nếu có (chỉ thao tác khi cửa sổ game hợp lệ)."""
         self._log("🔍 Kiểm tra popup quảng cáo...")
-        screen, originX, originY, _ = self.captureGameScreen()
+        screen, originX, originY, rect = self.captureGameScreen()
         if screen is None:
             self._log("⚠️ Mất cửa sổ game khi kiểm tra popup, quay lại tìm cửa sổ...")
             self.state = State.LAUNCH_GAME
             return
 
-        popup_templates = ["popup_close", "popup_x", "btn_close", "btn_cancel"]
-        result = self.matcher.find_any(screen, popup_templates)
+        popupTemplates = ["popup_close", "popup_x", "btn_close", "btn_cancel"]
+        result = self.matcher.find_any(screen, popupTemplates)
 
         if result and not self._stop_event.is_set():
             name, cx, cy, _ = result
-            self._log(f"🗑️ Đóng popup '{name}' tại ({cx + originX},{cy + originY})")
-            self.ctrl.click(cx + originX, cy + originY, delay=config.DELAY_AFTER_CLICK)
-            if self._stop_event.wait(0.5):
-                return
-            screen2, ox2, oy2, _ = self.captureGameScreen()
-            if screen2 is not None and not self._stop_event.is_set():
-                result2 = self.matcher.find_any(screen2, popup_templates)
-                if result2 and not self._stop_event.is_set():
-                    name2, cx2, cy2, _ = result2
-                    self._log(f"🗑️ Đóng thêm popup '{name2}'")
-                    self.ctrl.click(cx2 + ox2, cy2 + oy2, delay=config.DELAY_AFTER_CLICK)
+            if self._clickPopupTarget(name, cx + originX, cy + originY, rect):
+                if self._stop_event.wait(0.5):
+                    return
+                screen2, ox2, oy2, rect2 = self.captureGameScreen()
+                if screen2 is not None and not self._stop_event.is_set():
+                    result2 = self.matcher.find_any(screen2, popupTemplates)
+                    if result2:
+                        name2, cx2, cy2, _ = result2
+                        self._clickPopupTarget(name2, cx2 + ox2, cy2 + oy2, rect2)
         else:
             self._log("✅ Không có popup")
 
@@ -231,10 +238,6 @@ class BotEngine:
             self._log(f"❌ Lỗi khi chạy Auto AFK: {e}")
             logger.exception("Lỗi trong run_auto_afk")
             self.state = State.ERROR
-
-    # ────────────────────────────────────────────
-    #  Helpers
-    # ────────────────────────────────────────────
 
     def _log(self, msg: str):
         timestamp = time.strftime("%H:%M:%S")

@@ -18,13 +18,23 @@ class _MockCtrl:
         self.escapes = 0
         self._onClick = onClick
 
-    def click(self, x, y, button="left", delay=None):
+    def click(self, x, y, button="left", delay=None, stop_event=None, guard_fn=None):
+        if stop_event is not None and stop_event.is_set():
+            return False
+        if guard_fn is not None and not guard_fn():
+            return False
         self.clicks.append((x, y))
         if self._onClick:
             self._onClick(len(self.clicks))
+        return True
 
-    def press_escape(self):
+    def press_escape(self, stop_event=None, guard_fn=None):
+        if stop_event is not None and stop_event.is_set():
+            return False
+        if guard_fn is not None and not guard_fn():
+            return False
         self.escapes += 1
+        return True
 
 
 class _MockMatcher:
