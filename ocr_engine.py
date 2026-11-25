@@ -5,6 +5,7 @@ Giúp bot chạy 0 cần người dùng tự chụp template cho các nút có c
 
 import difflib
 import logging
+import re
 import unicodedata
 from dataclasses import dataclass
 
@@ -67,6 +68,11 @@ class OcrEngine:
     def __init__(self, fuzzyThreshold: float = None):
         self.fuzzyThreshold = fuzzyThreshold or config.OCR_FUZZY_THRESHOLD
         self._engine = RapidOCR(use_angle_cls=False)
+        # Giữ độ phân giải nhận diện tối đa 1080p để không làm mờ nút nhỏ trên màn hình lớn
+        try:
+            self._engine.text_detector.preprocess_op[0].limit_side_len = 1080
+        except Exception:
+            pass
 
     def scanImage(
         self,
@@ -95,7 +101,7 @@ class OcrEngine:
             target = image[y1:y2, x1:x2]
             cropX, cropY = x1, y1
 
-        rawResults, _ = self._engine(target, use_det=True, use_cls=False, use_rec=True)
+        rawResults, _ = self._engine(target, box_thresh=0.4, text_score=0.45)
         if not rawResults:
             return []
 
@@ -193,10 +199,10 @@ class OcrEngine:
 
             for kw in keywords:
                 if exactOnly:
-                    if item.compactText == compactText(kw):
-                        ratio = 1.0
-                    else:
+                    kwCompact = compactText(kw)
+                    if not re.fullmatch(rf"\d*{re.escape(kwCompact)}\d*", item.compactText):
                         continue
+                    ratio = 1.0
                 else:
                     ratio = self._matchRatio(item, kw)
 
@@ -207,16 +213,8 @@ class OcrEngine:
         return bestMatch
 
 
-def inspectCheckboxByText(
-    image: np.ndarray,
-    item: OcrItem,
-    originX: int = 0,
-    originY: int = 0,
-) -> tuple[bool, int, int]:
-    """
-    Xác định vị trí ô checkbox nằm bên trái dòng chữ OCR và kiểm tra đã tick chưa bằng HSV.
-    Trả về (isChecked, clickScreenX, clickScreenY).
-    """
+def inspectCheckboxByText(image: np.ndarray, item: OcrItem, originX: int = 0, originY: int = 0) -> tuple[bool, int, int]:
+    """Xác định ô checkbox bên trái dòng chữ OCR và kiểm tra đã tick chưa bằng HSV."""
     localLeftX = item.x1 - originX
     localCenterY = item.centerY - originY
     textHeight = item.height
@@ -243,16 +241,8 @@ def inspectCheckboxByText(
     return (isChecked, boxLocalX + originX, boxLocalY + originY)
 
 
-def findNextTeamArrow(
-    image: np.ndarray,
-    originX: int = 0,
-    originY: int = 0,
-    roi: tuple[float, float, float, float] | None = None,
-) -> tuple[int, int] | None:
-    """
-    Tìm nút mũi tên '>' tròn ở bên phải hộp thoại Thành Tích bằng hình học & màu sắc
-    (không cần file ảnh template).
-    """
+def findNextTeamArrow(image: np.ndarray, originX: int = 0, originY: int = 0, roi: tuple[float, float, float, float] | None = None) -> tuple[int, int] | None:
+    """Tìm nút mũi tên '>' tròn ở bên phải hộp thoại Thành Tích bằng hình học & màu sắc."""
     if image is None or image.size == 0:
         return None
 
