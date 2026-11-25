@@ -202,6 +202,10 @@ class TestOcrAndLogic(unittest.TestCase):
             self._ocrItem("Tự Động", 70, 950, w=80, h=20),
             self._ocrItem("Xử Lý", 70, 974, w=70, h=20),
         ]
+        prepAutoBattle = [
+            self._ocrItem("Chiến Đấu", 640, 520, w=110, h=22),
+            self._ocrItem("Tự Động", 640, 548, w=90, h=22),
+        ]
 
         bot = MockBot(self.ocr, [frame, frame, frame])
         seq = [runningItems, runningItems, doneItems]
@@ -213,6 +217,12 @@ class TestOcrAndLogic(unittest.TestCase):
         try:
             stateSplit = findAutoProgressState(bot, splitRunning, auto_afk._findKey)
             self.assertEqual(stateSplit, (False, 70, 950))
+            self.assertIsNotNone(
+                auto_afk._findKey(
+                    bot, prepAutoBattle, "auto_battle",
+                    excludeKeys=config.AUTO_BATTLE_EXCLUDE_KEYS, extraExcludes=config.AUTO_BATTLE_EXTRA_EXCLUDES,
+                )
+            )
             ok = auto_afk.run_auto_afk(bot)
         finally:
             bot.ocr.scanImage, auto_afk.time.time, auto_afk._wait = origScan, origTime, origWait

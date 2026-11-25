@@ -84,7 +84,8 @@ FIGHT_EXCLUDE_KEYS = ["auto_battle", "auto_battle_complete", "challenge_hl", "st
 # FIGHT_EXTRA_EXCLUDES = ["cap nhat", "update"]
 FIGHT_EXTRA_EXCLUDES = ["cap nhat", "update", "che do"]
 AUTO_BATTLE_EXCLUDE_KEYS = ["auto_battle_complete", "auto_progress"]
-AUTO_BATTLE_EXTRA_EXCLUDES = ["xu ly", "xong"]
+# AUTO_BATTLE_EXTRA_EXCLUDES = ["xu ly", "xong"]  # "xong" khop mo 0.75 voi "dong" trong "Tu Dong"
+AUTO_BATTLE_EXTRA_EXCLUDES = []
 
 # Tỷ lệ dịch chuyển tương đối (theo kích thước cửa sổ hoặc chiều cao chữ)
 DEFEAT_BACK_OFFSET_X_RATIO = -0.18
