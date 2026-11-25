@@ -222,8 +222,15 @@ def run_auto_afk(bot):
             time.sleep(3.0)
             continue
 
-        # 6. Phát hiện biểu tượng "AFK" ở sảnh chính
+        # 6. Phát hiện biểu tượng "AFK" ở sảnh chính (fallback quét cận góc dưới phải nếu ảnh lớn bị thu nhỏ)
         afkHit = _findKey(bot, items, "afk_icon", excludeKeys=["victory", "auto_battle_complete"], exactOnly=True)
+        if not afkHit:
+            cornerItems = bot.ocr.scanImage(
+                screen, originX=originX, originY=originY, roi=(0.75, 0.70, 1.0, 1.0)
+            )
+            afkHit = _findKey(
+                bot, cornerItems, "afk_icon", excludeKeys=["victory", "auto_battle_complete"], exactOnly=True
+            )
         if afkHit:
             bot._log("🖱 Tìm thấy sảnh chính. Click biểu tượng 'AFK'...")
             bot.ctrl.click(afkHit[0], afkHit[1])

@@ -68,11 +68,6 @@ class OcrEngine:
     def __init__(self, fuzzyThreshold: float = None):
         self.fuzzyThreshold = fuzzyThreshold or config.OCR_FUZZY_THRESHOLD
         self._engine = RapidOCR(use_angle_cls=False)
-        # Giữ độ phân giải nhận diện tối đa 1080p để không làm mờ nút nhỏ trên màn hình lớn
-        try:
-            self._engine.text_detector.preprocess_op[0].limit_side_len = 1080
-        except Exception:
-            pass
 
     def scanImage(
         self,
@@ -101,7 +96,7 @@ class OcrEngine:
             target = image[y1:y2, x1:x2]
             cropX, cropY = x1, y1
 
-        rawResults, _ = self._engine(target, box_thresh=0.4, text_score=0.45)
+        rawResults, _ = self._engine(target, use_det=True, use_cls=False, use_rec=True)
         if not rawResults:
             return []
 

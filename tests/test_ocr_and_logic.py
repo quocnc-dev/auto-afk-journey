@@ -125,7 +125,15 @@ class TestOcrAndLogic(unittest.TestCase):
             hit = self.ocr.findText(
                 items, config.OCR_KEYWORDS[key], excludeKeywords=exWords or None, exactOnly=exact
             )
-            self.assertIsNotNone(hit, f"Không khớp '{key}' trên khung 1920x1080")
+            if not hit and key == "afk_icon":
+                cornerItems = self.ocr.scanImage(bg, roi=(0.75, 0.70, 1.0, 1.0))
+                hit = self.ocr.findText(
+                    cornerItems, config.OCR_KEYWORDS[key], excludeKeywords=exWords or None, exactOnly=exact
+                )
+            self.assertIsNotNone(
+                hit,
+                f"Không khớp '{key}' trên khung 1920x1080; items={[i.normText for i in items]}",
+            )
 
     def test_checkbox_detection(self):
         checkedPath = os.path.join(self.tplDir, "cb_owned_team_checked.png")
