@@ -45,19 +45,18 @@ class ScreenCapture:
             img = np.array(pil_img)
             return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
-    def capture_window(self, rect: tuple[int, int, int, int] | None) -> tuple[np.ndarray, int, int]:
+    def capture_window(self, rect: tuple[int, int, int, int] | None) -> tuple[np.ndarray | None, int, int]:
         """
         Chụp vùng client của cửa sổ game nếu có rect=(left, top, w, h).
-        Tự động chuẩn hóa kích thước về (w, h) logic (chống lệch tọa độ Retina trên macOS).
-        Trả về (image_bgr, origin_x, origin_y). Nếu rect=None thì fallback chụp toàn màn hình.
+        Không fallback sang chụp toàn màn hình khi rect=None để tránh click nhầm ngoài game.
         """
-        if rect is not None:
-            left, top, w, h = rect
-            img = self.capture_region(left, top, w, h)
-            if img.shape[1] != w or img.shape[0] != h:
-                img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
-            return (img, left, top)
-        return (self.capture_full(), 0, 0)
+        if rect is None:
+            return (None, 0, 0)
+        left, top, w, h = rect
+        img = self.capture_region(left, top, w, h)
+        if img.shape[1] != w or img.shape[0] != h:
+            img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
+        return (img, left, top)
 
     def get_screen_size(self):
         monitor = self.sct.monitors[1]
@@ -104,12 +103,18 @@ class ImageMatcher:
 
         if screen_gray.shape[0] < tpl_gray.shape[0] or screen_gray.shape[1] < tpl_gray.shape[1]:
             return None
+        # Bỏ qua ảnh màu phẳng không có chi tiết để tránh matchTemplate trả về 1.0 giả
+        if float(np.std(tpl_gray)) < 1.0:
+            return None
 
         result = cv2.matchTemplate(screen_gray, tpl_gray, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
         if max_val >= thresh:
             h, w = tpl_gray.shape
+            patch = screen_gray[max_loc[1]:max_loc[1] + h, max_loc[0]:max_loc[0] + w]
+            if float(np.std(patch)) < 1.0:
+                return None
             cx = max_loc[0] + w // 2
             cy = max_loc[1] + h // 2
             return (cx, cy, max_val)

@@ -1,24 +1,18 @@
 """
-Tool chụp và cắt template từ màn hình - Chạy độc lập
-Dùng để tạo các file ảnh template cho bot nhận diện
-
-Cách dùng:
-  python capture_template.py
-
-Sau đó:
-  1. Kéo vùng chọn trên màn hình
-  2. Nhập tên template
-  3. Ảnh được lưu vào thư mục templates/
+Tool chụp và cắt template từ màn hình - Chạy độc lập (tùy chọn fallback).
+Dùng để tạo các file ảnh template cho bot nhận diện.
 """
 
+import os
+import re
+import subprocess
+import sys
 import tkinter as tk
-from tkinter import simpledialog, messagebox
+from tkinter import messagebox, simpledialog
+
+import cv2
 import mss
 import numpy as np
-import cv2
-from PIL import Image, ImageTk
-import os
-import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 import config
@@ -26,7 +20,27 @@ import config
 os.makedirs(config.TEMPLATES_DIR, exist_ok=True)
 
 
+def sanitizeTemplateName(rawName: str) -> str:
+    """Làm sạch tên file template, loại bỏ ký tự đường dẫn để tránh ghi ra ngoài thư mục templates."""
+    base = os.path.basename(rawName.strip())
+    base = re.sub(r"\.(png|jpe?g)$", "", base, flags=re.IGNORECASE)
+    cleaned = re.sub(r"[^a-zA-Z0-9_-]", "_", base).strip("_")
+    return cleaned
+
+
+def openFolder(path: str):
+    """Mở thư mục đa nền tảng (Windows / macOS / Linux)."""
+    if sys.platform == "win32":
+        os.startfile(path)
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", path])
+    else:
+        subprocess.Popen(["xdg-open", path])
+
+
 class TemplateCapturer(tk.Tk):
+    """Giao diện nhỏ hỗ trợ chụp vùng màn hình lưu thành ảnh template."""
+
     def __init__(self):
         super().__init__()
         self.title("📸 Capture Template")
@@ -37,34 +51,44 @@ class TemplateCapturer(tk.Tk):
         tk.Label(
             self,
             text="📸 AFK Journey - Capture Template",
-            font=("Consolas", 13, "bold"), fg="#4F8EF7", bg="#0D0F1A",
+            font=("Consolas", 13, "bold"),
+            fg="#4F8EF7",
+            bg="#0D0F1A",
         ).pack(pady=(20, 8))
 
         tk.Label(
             self,
             text="Nhấn nút bên dưới, sau đó kéo chọn vùng trên màn hình",
-            font=("Consolas", 10), fg="#6B7280", bg="#0D0F1A",
+            font=("Consolas", 10),
+            fg="#6B7280",
+            bg="#0D0F1A",
         ).pack(pady=(0, 12))
 
-        btn_frame = tk.Frame(self, bg="#0D0F1A")
-        btn_frame.pack()
+        btnFrame = tk.Frame(self, bg="#0D0F1A")
+        btnFrame.pack()
 
         tk.Button(
-            btn_frame,
+            btnFrame,
             text="  📷  Chụp vùng màn hình  ",
             font=("Consolas", 11, "bold"),
-            bg="#4F8EF7", fg="white",
-            relief="flat", padx=10, pady=6,
+            bg="#4F8EF7",
+            fg="white",
+            relief="flat",
+            padx=10,
+            pady=6,
             command=self._start_capture,
         ).pack(side="left", padx=8)
 
         tk.Button(
-            btn_frame,
+            btnFrame,
             text="  📂  Mở thư mục  ",
             font=("Consolas", 11),
-            bg="#1A1F35", fg="#A0B4CC",
-            relief="flat", padx=10, pady=6,
-            command=lambda: os.startfile(config.TEMPLATES_DIR),
+            bg="#1A1F35",
+            fg="#A0B4CC",
+            relief="flat",
+            padx=10,
+            pady=6,
+            command=lambda: openFolder(config.TEMPLATES_DIR),
         ).pack(side="left")
 
         self.status_lbl = tk.Label(
@@ -92,32 +116,52 @@ class TemplateCapturer(tk.Tk):
         with mss.mss() as sct:
             region = {"top": y, "left": x, "width": w, "height": h}
             shot = sct.grab(region)
-            img = np.array(shot)
-            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            img = cv2.cvtColor(np.array(shot), cv2.COLOR_BGRA2BGR)
 
-        name = simpledialog.askstring(
+        rawName = simpledialog.askstring(
             "Tên Template",
-            "Nhập tên cho template (không cần .png):\nVí dụ: icon_daily_quest, btn_close ...",
+            "Nhập tên cho template (không cần .png):\nVí dụ: popup_close, btn_close ...",
             parent=self,
         )
-        if not name:
+        if not rawName:
             self.status_lbl.configure(text="Đã huỷ", fg="#F59E0B")
             return
 
-        name = name.strip().replace(" ", "_")
-        out_path = os.path.join(config.TEMPLATES_DIR, f"{name}.png")
-        cv2.imwrite(out_path, img)
-        self.status_lbl.configure(text=f"✅ Đã lưu: {name}.png", fg="#22C55E")
-        messagebox.showinfo("Thành công", f"Template đã lưu:\n{out_path}")
+        safeName = sanitizeTemplateName(rawName)
+        if not safeName:
+            self.status_lbl.configure(text="Tên template không hợp lệ!", fg="#EF4444")
+            messagebox.showerror("Lỗi", "Tên template chỉ nên chứa chữ, số, '-' hoặc '_'.")
+            return
+
+        baseDir = os.path.abspath(config.TEMPLATES_DIR)
+        outPath = os.path.abspath(os.path.join(baseDir, f"{safeName}.png"))
+        if os.path.commonpath([baseDir, outPath]) != baseDir:
+            self.status_lbl.configure(text="Đường dẫn không hợp lệ!", fg="#EF4444")
+            return
+
+        if os.path.exists(outPath):
+            overwrite = messagebox.askyesno(
+                "Xác nhận ghi đè", f"Template '{safeName}.png' đã tồn tại. Bạn có muốn ghi đè?"
+            )
+            if not overwrite:
+                self.status_lbl.configure(text="Đã huỷ ghi đè", fg="#F59E0B")
+                return
+
+        if not cv2.imwrite(outPath, img):
+            self.status_lbl.configure(text="Lưu file thất bại!", fg="#EF4444")
+            messagebox.showerror("Lỗi", f"Không thể ghi file ảnh:\n{outPath}")
+            return
+
+        self.status_lbl.configure(text=f"✅ Đã lưu: {safeName}.png", fg="#22C55E")
+        messagebox.showinfo("Thành công", f"Template đã lưu:\n{outPath}")
 
 
 class SelectionOverlay(tk.Toplevel):
-    """Cửa sổ trong suốt phủ toàn màn hình để kéo chọn vùng"""
+    """Cửa sổ trong suốt phủ toàn màn hình để kéo chọn vùng."""
 
     def __init__(self, master):
         super().__init__(master)
         self.result = None
-
         self.attributes("-fullscreen", True)
         self.attributes("-alpha", 0.25)
         self.configure(bg="black")
@@ -138,15 +182,16 @@ class SelectionOverlay(tk.Toplevel):
         tk.Label(
             self.canvas,
             text="Kéo để chọn vùng chụp  •  ESC để huỷ",
-            font=("Consolas", 13, "bold"), fg="white", bg="#222244",
+            font=("Consolas", 13, "bold"),
+            fg="white",
+            bg="#222244",
         ).place(relx=0.5, rely=0.05, anchor="center")
 
     def _on_press(self, e):
         self._start_x, self._start_y = e.x, e.y
         self._rect = self.canvas.create_rectangle(
-                e.x, e.y, e.x, e.y,
-                outline="#4F8EF7", width=2, fill="",
-            )
+            e.x, e.y, e.x, e.y, outline="#4F8EF7", width=2, fill=""
+        )
 
     def _on_drag(self, e):
         if self._rect:

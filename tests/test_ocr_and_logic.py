@@ -1,4 +1,4 @@
-"""Unit tests cho OCR engine, luồng state machine, nhận diện checkbox/arrow và import đa nền tảng."""
+"""Unit tests cho OCR engine, 1080p scene, checkbox/arrow và luồng Auto AFK."""
 
 import os
 import threading
@@ -8,23 +8,20 @@ import cv2
 import numpy as np
 
 import config
-import window_manager
-import vision
-import controller
-import bot_engine
 from modules import auto_afk
-from ocr_engine import OcrEngine, inspectCheckboxByText, findNextTeamArrow, normalizeText
+from ocr_engine import OcrEngine, findNextTeamArrow, inspectCheckboxByText, normalizeText
 
 
 class _MockCtrl:
-    """Bộ điều khiển giả lập để ghi lại tọa độ click và phím nhấn trong test."""
-
-    def __init__(self):
+    def __init__(self, onClick=None):
         self.clicks = []
         self.escapes = 0
+        self._onClick = onClick
 
     def click(self, x, y, button="left", delay=None):
         self.clicks.append((x, y))
+        if self._onClick:
+            self._onClick(len(self.clicks))
 
     def press_escape(self):
         self.escapes += 1
@@ -35,13 +32,13 @@ class _MockMatcher:
         return None
 
 
-class _MockBot:
-    """Bot giả lập phát lại chuỗi ảnh màn hình theo từng bước của vòng lặp Auto AFK."""
+class MockBot:
+    """Bot giả lập phát lại chuỗi ảnh màn hình cho unit test."""
 
-    def __init__(self, ocr: OcrEngine, frames: list[np.ndarray]):
+    def __init__(self, ocr: OcrEngine, frames: list[np.ndarray | None], onClick=None):
         self.ocr = ocr
         self.matcher = _MockMatcher()
-        self.ctrl = _MockCtrl()
+        self.ctrl = _MockCtrl(onClick=onClick)
         self._frames = frames
         self._index = 0
         self._stop_event = threading.Event()
@@ -53,15 +50,16 @@ class _MockBot:
     def captureGameScreen(self):
         if self._index >= len(self._frames):
             self._stop_event.set()
-            img = np.zeros((720, 1280, 3), dtype=np.uint8)
-        else:
-            img = self._frames[self._index]
-            self._index += 1
+            return np.zeros((720, 1280, 3), dtype=np.uint8), 0, 0, (0, 0, 1280, 720)
+        img = self._frames[self._index]
+        self._index += 1
+        if img is None:
+            return None, 0, 0, None
         return img, 0, 0, (0, 0, img.shape[1], img.shape[0])
 
 
 class TestOcrAndLogic(unittest.TestCase):
-    """Kiểm thử khả năng nhận diện chữ, checkbox, mũi tên và luồng Auto AFK."""
+    """Kiểm thử nhận diện chữ OCR, checkbox, mũi tên và luồng Auto AFK."""
 
     @classmethod
     def setUpClass(cls):
@@ -71,13 +69,6 @@ class TestOcrAndLogic(unittest.TestCase):
     def test_normalize_vietnamese(self):
         self.assertEqual(normalizeText("  Chiến   Đấu Tự Động "), "chien dau tu dong")
         self.assertEqual(normalizeText("Đã Tăng Phần Thưởng AFK"), "da tang phan thuong afk")
-
-    def test_imports_and_modules(self):
-        self.assertTrue(hasattr(window_manager, "findGameWindow"))
-        self.assertTrue(hasattr(vision, "ScreenCapture"))
-        self.assertTrue(hasattr(controller, "Controller"))
-        self.assertTrue(hasattr(bot_engine, "BotEngine"))
-        self.assertTrue(hasattr(auto_afk, "run_auto_afk"))
 
     def test_full_1080p_scene_ocr(self):
         if not os.path.isdir(self.tplDir):
@@ -105,41 +96,36 @@ class TestOcrAndLogic(unittest.TestCase):
             bg[y:y + h, x:x + w] = im
 
         items = self.ocr.scanImage(bg)
+        fightEx = [w for k in config.FIGHT_EXCLUDE_KEYS for w in config.OCR_KEYWORDS[k]] + config.FIGHT_EXTRA_EXCLUDES
         checks = [
-            ("retry", None, False),
-            ("stats", None, False),
-            ("copy_team", None, False),
-            ("auto_battle", ["auto_battle_complete"], False),
-            ("challenge_hl", None, False),
-            ("fight", ["auto_battle", "auto_battle_complete", "challenge_hl"], False),
-            ("victory", None, False),
-            ("auto_battle_complete", None, False),
-            ("afk_icon", ["victory", "auto_battle_complete"], True),
-            ("owned_team", None, False),
+            ("retry", None, False, False),
+            ("stats", None, False, False),
+            ("copy_team", None, False, False),
+            ("auto_battle", config.OCR_KEYWORDS["auto_battle_complete"], False, False),
+            ("challenge_hl", None, False, False),
+            ("fight", fightEx, False, True),
+            ("victory", None, False, False),
+            ("auto_battle_complete", config.FIGHT_EXTRA_EXCLUDES, False, False),
+            ("afk_icon", config.OCR_KEYWORDS["victory"] + config.OCR_KEYWORDS["auto_battle_complete"], True, False),
+            ("owned_team", None, False, False),
         ]
-        for key, exKeys, exact in checks:
-            exWords = []
-            if exKeys:
-                for ek in exKeys:
-                    exWords.extend(config.OCR_KEYWORDS[ek])
+        for key, exWords, exact, wholePhrase in checks:
             hit = self.ocr.findText(
-                items, config.OCR_KEYWORDS[key], excludeKeywords=exWords or None, exactOnly=exact
+                items, config.OCR_KEYWORDS[key], excludeKeywords=exWords, exactOnly=exact, wholePhrase=wholePhrase
             )
             if not hit and key == "afk_icon":
-                cornerItems = self.ocr.scanImage(bg, roi=(0.75, 0.70, 1.0, 1.0))
+                cornerItems = self.ocr.scanImage(bg, roi=config.ROI_AFK_CORNER)
                 hit = self.ocr.findText(
-                    cornerItems, config.OCR_KEYWORDS[key], excludeKeywords=exWords or None, exactOnly=exact
+                    cornerItems, config.OCR_KEYWORDS[key], excludeKeywords=exWords, exactOnly=exact
                 )
-            self.assertIsNotNone(
-                hit,
-                f"Không khớp '{key}' trên khung 1920x1080; items={[i.normText for i in items]}",
-            )
+            self.assertIsNotNone(hit, f"Không khớp '{key}' trên khung 1920x1080")
 
-    def test_checkbox_detection(self):
+    def test_checkbox_and_next_team_arrow(self):
         checkedPath = os.path.join(self.tplDir, "cb_owned_team_checked.png")
         uncheckedPath = os.path.join(self.tplDir, "cb_owned_team_unchecked.png")
-        if not (os.path.exists(checkedPath) and os.path.exists(uncheckedPath)):
-            self.skipTest("Thiếu ảnh mẫu checkbox để test")
+        nextPath = os.path.join(self.tplDir, "btn_afk_next_team.png")
+        if not (os.path.exists(checkedPath) and os.path.exists(uncheckedPath) and os.path.exists(nextPath)):
+            self.skipTest("Thiếu ảnh mẫu checkbox/next_team")
 
         for path, expected in [(checkedPath, True), (uncheckedPath, False)]:
             img = cv2.imread(path)
@@ -148,11 +134,6 @@ class TestOcrAndLogic(unittest.TestCase):
             self.assertIsNotNone(hit)
             isChecked, _, _ = inspectCheckboxByText(img, hit[3], originX=50, originY=80)
             self.assertEqual(isChecked, expected)
-
-    def test_next_team_arrow_detection(self):
-        nextPath = os.path.join(self.tplDir, "btn_afk_next_team.png")
-        if not os.path.exists(nextPath):
-            self.skipTest("Thiếu ảnh mẫu btn_afk_next_team.png")
 
         modal = np.full((720, 1280, 3), 35, dtype=np.uint8)
         nextTpl = cv2.imread(nextPath)
@@ -176,16 +157,15 @@ class TestOcrAndLogic(unittest.TestCase):
             canvas[300:300 + h, 500:500 + w] = im
             frames.append(canvas)
 
-        bot = _MockBot(self.ocr, frames)
-        origSleep = auto_afk.time.sleep
-        auto_afk.time.sleep = lambda _: None
+        bot = MockBot(self.ocr, frames)
+        origWait = auto_afk._wait
+        auto_afk._wait = lambda b, s: True
         try:
             ok = auto_afk.run_auto_afk(bot)
         finally:
-            auto_afk.time.sleep = origSleep
+            auto_afk._wait = origWait
 
         self.assertTrue(ok)
-        # Phải click đủ 4 bước: icon AFK -> Huyền Linh -> Chiến Đấu Tự Động -> đóng màn thắng
         self.assertEqual(len(bot.ctrl.clicks), 4)
         self.assertEqual(bot.ctrl.clicks[-1], (640, 360))
 

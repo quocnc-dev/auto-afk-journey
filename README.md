@@ -1,128 +1,56 @@
 # AFK Journey Auto Bot 🤖
 
-Bot tự động hoàn thành nhiệm vụ hàng ngày trong game AFK Journey bằng Python + OpenCV.
+Bot tự động vượt ải AFK Journey trên **Windows** và **macOS (Apple Silicon)** bằng **OCR (`RapidOCR`) + Neo tọa độ**, không cần người dùng tự chụp template cho các nút.
 
 ## 🏗 Cấu trúc project
 
-```
+```text
 auto-afk-journey/
-├── main.py              # GUI chính (CustomTkinter)
-├── bot_engine.py        # State Machine - Logic bot
-├── vision.py            # Chụp màn hình + nhận diện ảnh (OpenCV)
-├── controller.py        # Điều khiển chuột/bàn phím (PyDirectInput)
-├── config.py            # Cấu hình chung
-├── capture_template.py  # Tool chụp template từ màn hình
-├── requirements.txt     # Thư viện cần cài
-├── setup.bat            # Script cài đặt tự động
-├── run_bot.bat          # Script chạy bot
-├── templates/           # ← Bỏ ảnh template vào đây
-└── logs/                # Log tự động tạo
+├── main.py              # Giao diện chính (CustomTkinter)
+├── ui_tabs.py           # Các tab Log / Preview / Template
+├── bot_engine.py        # State Machine điều phối bot
+├── window_manager.py    # Bắt cửa sổ game đa nền tảng (pywin32 / Quartz)
+├── ocr_engine.py        # Nhận diện chữ OCR, checkbox & mũi tên
+├── vision.py            # Chụp màn hình cửa sổ game & template fallback
+├── controller.py        # Chuột/bàn phím (Virtual Desktop Windows / macOS)
+├── config.py            # Cấu hình từ khóa OCR, ngưỡng, ROI
+├── modules/
+│   └── auto_afk.py      # Luồng tự động vượt ải Auto AFK
+├── tests/               # Unit tests tự động
+├── .github/workflows/   # GitHub Actions build & Release Windows + macOS
+├── setup.bat            # Cài đặt thư viện trên Windows
+├── run_bot.bat          # Chạy bot với quyền Admin trên Windows
+└── build_exe.bat        # Đóng gói .exe trên Windows
 ```
 
-## 🚀 Cài đặt
+## 🚀 Chạy từ mã nguồn
 
 ```bat
-# Bước 1: Cài thư viện (chỉ cần làm 1 lần)
 setup.bat
-
-# Hoặc thủ công:
-pip install -r requirements.txt
-```
-
-## ▶ Chạy bot
-
-```bat
 run_bot.bat
-# hoặc
-python main.py
 ```
 
-## 🚀 Cấu hình Farlight Launcher (QUAN TRỌNG)
+## 📦 Tải bản build sẵn từ GitHub Releases
 
-AFK Journey không mở trực tiếp được mà phải qua **Farlight Launcher**. Bot xử lý được điều này theo luồng:
+Workflow [ci.yml](.github/workflows/ci.yml) tự động build và phát hành 2 gói sau mỗi lần push lên `master` / `main` hoặc gắn tag `v*`:
+- **Windows x64**: `afk-journey-bot-windows-x64.zip` → giải nén và chạy `AFKJourneyBot.exe` (chạy quyền Admin nếu game chặn click).
+- **macOS Apple Silicon**: `afk-journey-bot-macos-arm64.zip` → giải nén `AFKJourneyBot.app`.
 
-```
-Mở FarlightLauncher.exe
-    → Chờ nút "Bắt đầu / Start" hiện ra
-        → Click vào nút đó
-            → Chờ game vào sảnh chính
-                → Tiếp tục chạy nhiệm vụ
-```
-
-### Cài đặt trong GUI:
-1. Bật switch **"Dùng Farlight Launcher"** (mặc định bật)
-2. Nhấn 📂 chọn đường dẫn `FarlightLauncher.exe`
-3. Chụp template nút **Start** trong launcher (xem bên dưới)
-
-### Template bắt buộc cho Launcher:
-
-| Tên file | Mô tả |
-|---|---|
-| `btn_launcher_start.png` | Nút "Bắt đầu chơi" / "Start Game" trong Farlight Launcher |
-| `btn_launcher_confirm.png` | Nút confirm nếu có popup xác nhận (tuỳ chọn) |
-
-> 💡 **Mẹo**: Mở Farlight Launcher, đến màn hình có nút Start → chạy `python capture_template.py` → chụp đúng vùng nút → đặt tên `btn_launcher_start`
-
-## 🖼 Thêm Template (BẮT BUỘC trước khi dùng)
-
-Bot dùng **Template Matching** → cần ảnh chụp của các nút/icon trong game.
-
-### Cách chụp template:
-```bat
-python capture_template.py
-```
-1. Mở game AFK Journey
-2. Chạy `capture_template.py`
-3. Nhấn **"Chụp vùng màn hình"**
-4. Kéo để khoanh vùng nút/icon cần nhận diện
-5. Đặt tên theo bảng dưới đây
-
-### Danh sách tên template cần có:
-
-| Tên file | Mô tả |
-|---|---|
-| `home_indicator.png` | Bất kỳ element nào trên màn hình chính (để detect game đang mở) |
-| `icon_daily_quest.png` | Icon sách/nhiệm vụ hàng ngày |
-| `btn_claim_all.png` | Nút "Nhận tất cả" |
-| `btn_claim.png` | Nút "Nhận" từng phần thưởng |
-| `icon_arena.png` | Icon vào Arena |
-| `btn_challenge.png` | Nút thách đấu đối thủ |
-| `btn_auto_battle.png` | Nút Auto chiến đấu |
-| `txt_victory.png` | Màn hình Victory sau trận |
-| `txt_defeat.png` | Màn hình Defeat sau trận |
-| `btn_result_close.png` | Nút đóng màn hình kết quả |
-| `icon_guild.png` | Icon vào Guild |
-| `btn_guild_checkin.png` | Nút điểm danh Guild |
-| `btn_guild_boss.png` | Nút đánh Guild Boss |
-| `popup_close.png` | Nút X đóng popup quảng cáo |
-| `btn_close.png` | Nút đóng chung |
-| `btn_back.png` | Nút quay lại |
-| `btn_confirm.png` | Nút xác nhận |
-
-> 💡 **Mẹo**: Chụp vùng nhỏ, đặc trưng. Tránh chụp vùng quá to hoặc có chữ số thay đổi.
-
-## ⚙ Cấu hình (config.py)
-
-| Tham số | Mặc định | Mô tả |
-|---|---|---|
-| `GAME_WINDOW_TITLE` | `"AFK Journey"` | Tiêu đề cửa sổ game |
-| `GAME_EXE_PATH` | `""` | Đường dẫn .exe để tự mở game |
-| `MATCH_THRESHOLD` | `0.80` | Độ chính xác nhận diện (0.5~1.0) |
-| `ARENA_BATTLES_PER_DAY` | `5` | Số trận Arena mỗi ngày |
-| `TIMEOUT_BATTLE` | `180` | Giây chờ tối đa 1 trận |
+### Lưu ý khi chạy trên macOS lần đầu
+1. Nếu macOS chặn app chưa ký:
+   ```bash
+   xattr -cr AFKJourneyBot.app
+   ```
+2. Vào **System Settings → Privacy & Security** và cấp 2 quyền cho `AFKJourneyBot.app`:
+   - **Screen Recording**: để chụp đúng cửa sổ game `"AFK Journey"` cho OCR đọc.
+   - **Accessibility**: để điều khiển chuột click vào game.
 
 ## 🔄 State Machine
 
-```
-IDLE → LAUNCH_GAME → CHECK_POPUP → DAILY_QUEST → ARENA → GUILD → DONE
-                          ↑______________|__________|________|
-                          (đóng popup bất cứ lúc nào)
+```text
+IDLE → LAUNCH_GAME → CHECK_POPUP → AUTO_AFK → DONE / ERROR
 ```
 
-## ⚠️ Lưu ý quan trọng
-
-1. **Chạy với quyền Admin** nếu bot không click được vào game
-2. **Độ phân giải cố định**: Template chụp ở độ phân giải nào thì chạy bot ở độ phân giải đó
-3. **Không dùng chuột** khi bot đang chạy
-4. Nếu bot kẹt, nhấn nút **Stop** → kiểm tra log để debug
-5. Tuân thủ ToS của game, dùng cho mục đích cá nhân
+## ⚠️ Lưu ý
+- Giữ cửa sổ `"AFK Journey"` hiển thị (không bị thu nhỏ hoặc che khuất); nếu mất cửa sổ game, bot sẽ tự tạm dừng và không click ra ngoài ứng dụng khác.
+- Có thể dùng `capture_template.py` để thêm ảnh popup quảng cáo (`popup_close.png`, `btn_close.png`) vào `templates/` làm fallback tùy chọn.

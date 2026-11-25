@@ -14,6 +14,11 @@ if errorlevel 1 (
 echo.
 echo [2/3] Cai dat thu vien...
 python -m pip install -r requirements.txt
+if errorlevel 1 (
+    echo ERROR: Cai dat thu vien that bai! Kiem tra mang hoac phien ban Python.
+    pause
+    exit /b 1
+)
 
 echo.
 echo [3/3] Tao thu muc can thiet...
@@ -24,6 +29,5 @@ echo.
 echo ============================================
 echo   SETUP HOAN THANH!
 echo   Chay bot: python main.py
-echo   Chup template: python capture_template.py
 echo ============================================
 pause

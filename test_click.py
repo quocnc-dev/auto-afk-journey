@@ -1,41 +1,45 @@
-"""Test click pydirectinput"""
-import time
+"""Test click pydirectinput (chỉ chạy khi thực thi trực tiếp)."""
 import ctypes
-import pydirectinput
 import sys
+import time
 
-sys.stdout.reconfigure(encoding='utf-8')
 
-try:
-    ctypes.windll.shcore.SetProcessDpiAwareness(2)
-except Exception:
-    ctypes.windll.user32.SetProcessDPIAware()
+def runMouseClickTest():
+    """Chạy kiểm thử di chuyển và click chuột trên Windows."""
+    import pydirectinput
 
-print("=== Test Controller (pydirectinput) ===")
-print("Click sau 3 giay...")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
 
-for i in range(3, 0, -1):
-    pos = pydirectinput.position()
-    print(f"  {i}... cursor: {pos}")
-    time.sleep(1)
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
 
-x, y = pydirectinput.position()
-print(f"Click tai ({x}, {y})")
+    print("=== Test Controller (pydirectinput) ===")
+    print("Click sau 3 giay...")
 
-pydirectinput.click(x, y)
+    for i in range(3, 0, -1):
+        pos = pydirectinput.position()
+        print(f"  {i}... cursor: {pos}")
+        time.sleep(1)
 
-print("Done click!")
-time.sleep(0.5)
+    x, y = pydirectinput.position()
+    print(f"Click tai ({x}, {y})")
+    pydirectinput.click(x, y)
+    print("Done click!")
+    time.sleep(0.5)
 
-# Test move
-pydirectinput.moveTo(100, 100)
-time.sleep(0.3)
-actual = pydirectinput.position()
-print(f"Move to (100,100) -> actual: {actual}")
+    for tx, ty in [(100, 100), (500, 400)]:
+        pydirectinput.moveTo(tx, ty)
+        time.sleep(0.3)
+        print(f"Move to ({tx},{ty}) -> actual: {pydirectinput.position()}")
 
-pydirectinput.moveTo(500, 400)
-time.sleep(0.3)
-actual = pydirectinput.position()
-print(f"Move to (500,400) -> actual: {actual}")
+    print("=== XONG ===")
 
-print("=== XONG ===")
+
+if __name__ == "__main__":
+    runMouseClickTest()

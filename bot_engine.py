@@ -7,7 +7,7 @@ Các State:
   CHECK_POPUP   -> Kiểm tra và đóng popup quảng cáo (nếu có)
   AUTO_AFK      -> Chạy luồng Auto AFK bằng OCR + Neo tọa độ
   DONE          -> Hoàn thành tất cả task, về IDLE
-  ERROR         -> Gặp lỗi, dừng bot
+  ERROR         -> Gặp lỗi hoặc timeout, dừng bot
 """
 
 import time
@@ -59,10 +59,7 @@ class BotEngine:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
-        # Config task (sẽ set từ UI)
         self.task_auto_afk = True
-
-        # Trạng thái tiến trình
         self.progress_callback: Callable[[str, int, int], None] | None = None
 
     # ────────────────────────────────────────────
@@ -91,12 +88,14 @@ class BotEngine:
     def captureGameScreen(self):
         """
         Chụp riêng vùng client của cửa sổ game AFK Journey.
-        Trả về (image_bgr, originX, originY, rect).
+        Không fallback toàn màn hình khi mất cửa sổ để tránh click nhầm ứng dụng khác.
+        Trả về (image_bgr | None, originX, originY, rect | None).
         """
         hwnd = findGameWindow(config.GAME_WINDOW_TITLE)
-        if hwnd:
-            self.gameHwnd = hwnd
-        rect = getClientRectScreen(self.gameHwnd) if self.gameHwnd else None
+        self.gameHwnd = hwnd
+        rect = getClientRectScreen(hwnd) if hwnd else None
+        if rect is None:
+            return None, 0, 0, None
         img, originX, originY = self.capture.capture_window(rect)
         return img, originX, originY, rect
 
@@ -115,7 +114,6 @@ class BotEngine:
                     self._state_auto_afk()
                 elif self.state == State.DONE:
                     self._log("✅ Hoàn thành tất cả nhiệm vụ hôm nay!")
-                    self.state = State.IDLE
                     break
                 elif self.state == State.ERROR:
                     self._log("❌ Bot gặp lỗi, đã dừng.")
@@ -127,6 +125,8 @@ class BotEngine:
             logger.exception("Lỗi không xử lý được trong BotEngine")
             self.state = State.ERROR
         finally:
+            if self._stop_event.is_set() and self.state not in (State.ERROR, State.DONE):
+                self.state = State.IDLE
             self._log("🔴 Bot đã dừng.")
 
     # ────────────────────────────────────────────
@@ -140,16 +140,15 @@ class BotEngine:
         if hwnd:
             self.gameHwnd = hwnd
             focusGameWindow(hwnd)
-            time.sleep(0.3)
+            if self._stop_event.wait(0.3):
+                return
             rect = getClientRectScreen(hwnd)
             if rect:
                 self._log(f"✅ Đã bắt được cửa sổ '{config.GAME_WINDOW_TITLE}' ({rect[2]}x{rect[3]}), tiếp tục...")
                 self.state = State.CHECK_POPUP
                 return
 
-        # Game chưa mở → Hỏi người dùng qua UI main-thread (an toàn trên macOS & Windows)
         self._log("⚠️ Không tìm thấy cửa sổ game! Đang chờ người dùng mở game...")
-
         promptMsg = (
             f"Không tìm thấy cửa sổ '{config.GAME_WINDOW_TITLE}' đang mở.\n\n"
             "Vui lòng:\n"
@@ -165,44 +164,56 @@ class BotEngine:
         self._log("🔄 Đang kiểm tra lại cửa sổ game...")
 
     def _state_check_popup(self):
-        """Đóng các popup quảng cáo nếu có (dùng template fallback nếu người dùng có sẵn)"""
+        """Đóng các popup quảng cáo nếu có (chỉ thao tác khi cửa sổ game hợp lệ)."""
         self._log("🔍 Kiểm tra popup quảng cáo...")
         screen, originX, originY, _ = self.captureGameScreen()
+        if screen is None:
+            self._log("⚠️ Mất cửa sổ game khi kiểm tra popup, quay lại tìm cửa sổ...")
+            self.state = State.LAUNCH_GAME
+            return
 
         popup_templates = ["popup_close", "popup_x", "btn_close", "btn_cancel"]
         result = self.matcher.find_any(screen, popup_templates)
 
-        if result:
+        if result and not self._stop_event.is_set():
             name, cx, cy, _ = result
             self._log(f"🗑️ Đóng popup '{name}' tại ({cx + originX},{cy + originY})")
             self.ctrl.click(cx + originX, cy + originY, delay=config.DELAY_AFTER_CLICK)
-            time.sleep(0.5)
+            if self._stop_event.wait(0.5):
+                return
             screen2, ox2, oy2, _ = self.captureGameScreen()
-            result2 = self.matcher.find_any(screen2, popup_templates)
-            if result2:
-                name2, cx2, cy2, _ = result2
-                self._log(f"🗑️ Đóng thêm popup '{name2}'")
-                self.ctrl.click(cx2 + ox2, cy2 + oy2, delay=config.DELAY_AFTER_CLICK)
+            if screen2 is not None and not self._stop_event.is_set():
+                result2 = self.matcher.find_any(screen2, popup_templates)
+                if result2 and not self._stop_event.is_set():
+                    name2, cx2, cy2, _ = result2
+                    self._log(f"🗑️ Đóng thêm popup '{name2}'")
+                    self.ctrl.click(cx2 + ox2, cy2 + oy2, delay=config.DELAY_AFTER_CLICK)
         else:
             self._log("✅ Không có popup")
 
-        if self.task_auto_afk:
+        if self._stop_event.is_set():
+            self.state = State.IDLE
+        elif self.task_auto_afk:
             self.state = State.AUTO_AFK
         else:
             self.state = State.DONE
 
     def _state_auto_afk(self):
-        """Chạy nhánh nhiệm vụ Auto AFK"""
+        """Chạy nhánh nhiệm vụ Auto AFK và cập nhật trạng thái DONE/IDLE/ERROR chính xác."""
         try:
             success = run_auto_afk(self)
-            if success:
+            if self._stop_event.is_set():
+                self.state = State.IDLE
+            elif success:
                 self._log("✅ Auto AFK hoàn thành thành công!")
+                self.state = State.DONE
             else:
-                self._log("⚠️ Auto AFK dừng giữa chừng hoặc gặp sự cố.")
+                self._log("❌ Auto AFK dừng do timeout hoặc mất cửa sổ game.")
+                self.state = State.ERROR
         except Exception as e:
             self._log(f"❌ Lỗi khi chạy Auto AFK: {e}")
             logger.exception("Lỗi trong run_auto_afk")
-        self.state = State.DONE
+            self.state = State.ERROR
 
     # ────────────────────────────────────────────
     #  Helpers

@@ -50,7 +50,8 @@ CHECKBOX_GREEN_MIN_RATIO = 0.12
 # ========================
 # Format ROI: (xMinRatio, yMinRatio, xMaxRatio, yMaxRatio)
 ROI_FULL_WINDOW = (0.0, 0.0, 1.0, 1.0)
-ROI_NEXT_TEAM_AREA = (0.65, 0.25, 0.98, 0.75)
+ROI_NEXT_TEAM_AREA = (0.60, 0.20, 0.99, 0.80)
+ROI_AFK_CORNER = (0.55, 0.65, 1.0, 1.0)
 
 # Từ khóa OCR đã chuẩn hóa (không dấu, chữ thường)
 OCR_KEYWORDS = {
@@ -58,7 +59,7 @@ OCR_KEYWORDS = {
     "stats": ["thanh tich", "records"],
     "owned_team": ["doi hinh da so", "hien thi doi hinh", "owned"],
     "copy_team": ["sao chep", "copy"],
-    "auto_battle_complete": ["hoan tat", "dong hoan", "auto battle complete"],
+    "auto_battle_complete": ["tu dong hoan", "tu dong hoan tat", "auto battle complete"],
     "auto_battle": ["tu dong", "tudong", "auto battle"],
     "challenge_hl": ["huyen linh", "thach dau"],
     "fight": ["chien dau", "battle"],
@@ -67,8 +68,13 @@ OCR_KEYWORDS = {
     "back": ["quay lai", "back"],
 }
 
-# Tỷ lệ dịch chuyển tương đối (theo kích thước cửa sổ hoặc box chữ)
-DEFEAT_BACK_OFFSET_X_RATIO = -0.18  # Nếu không thấy nút Back, dịch trái ~18% bề rộng cửa sổ từ nút Thử Lại
+# Từ khóa loại trừ khi tìm nút Chiến Đấu thường và nút Auto
+FIGHT_EXCLUDE_KEYS = ["auto_battle", "auto_battle_complete", "challenge_hl", "stats"]
+FIGHT_EXTRA_EXCLUDES = ["cap nhat", "update"]
+
+# Tỷ lệ dịch chuyển tương đối (theo kích thước cửa sổ hoặc chiều cao chữ)
+DEFEAT_BACK_OFFSET_X_RATIO = -0.18
+DEFEAT_BACK_HEIGHT_MULT = -3.2      # Dịch trái theo chiều cao chữ 'Thử Lại' (hỗ trợ cả màn dọc iPad)
 CHECKBOX_LEFT_HEIGHT_MULT = 1.15    # Tâm checkbox nằm bên trái chữ ~1.15 lần chiều cao dòng chữ
 CHECKBOX_SAMPLE_HEIGHT_MULT = 0.45
 

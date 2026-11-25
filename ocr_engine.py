@@ -175,11 +175,9 @@ class OcrEngine:
         excludeKeywords: list[str] | None = None,
         roiScreenRect: tuple[int, int, int, int] | None = None,
         exactOnly: bool = False,
+        wholePhrase: bool = False,
     ) -> tuple[int, int, float, OcrItem] | None:
-        """
-        Tìm cụm chữ khớp nhất trong danh sách OcrItem.
-        Trả về (centerX, centerY, matchScore, OcrItem) hoặc None.
-        """
+        """Tìm cụm chữ khớp nhất trong danh sách OcrItem; trả về (cx, cy, score, item) hoặc None."""
         bestMatch = None
         bestScore = 0.0
 
@@ -188,7 +186,6 @@ class OcrEngine:
                 rx, ry, rw, rh = roiScreenRect
                 if not (rx <= item.centerX <= rx + rw and ry <= item.centerY <= ry + rh):
                     continue
-
             if excludeKeywords and self._hasNearbyExcluded(item, items, excludeKeywords):
                 continue
 
@@ -198,6 +195,13 @@ class OcrEngine:
                     if not re.fullmatch(rf"\d*{re.escape(kwCompact)}\d*", item.compactText):
                         continue
                     ratio = 1.0
+                elif wholePhrase:
+                    cleanedWords = re.sub(r"\b\d+[km]?\b", " ", item.normText)
+                    cleaned = " ".join(re.sub(r"[^a-z\s]", " ", cleanedWords).split())
+                    kwNorm = normalizeText(kw)
+                    if not cleaned or not kwNorm:
+                        continue
+                    ratio = 1.0 if cleaned == kwNorm else difflib.SequenceMatcher(None, cleaned, kwNorm).ratio()
                 else:
                     ratio = self._matchRatio(item, kw)
 
