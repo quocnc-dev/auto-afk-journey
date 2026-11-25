@@ -1,52 +1,48 @@
 """
 Quản lý cửa sổ game AFK Journey đa nền tảng (Windows dùng pywin32, macOS dùng Quartz).
-Giúp phát hiện game đang mở, lấy tọa độ vùng client thực tế trên màn hình
-và loại trừ chính cửa sổ của tool bot.
+Chỉ nhận diện đúng cửa sổ game (khớp chính xác tiêu đề, kiểm tra foreground và tọa độ click).
 """
 
-import os
-import sys
 import logging
+import os
 import subprocess
+import sys
 
 logger = logging.getLogger("AFK_Bot.Window")
 
 if sys.platform == "win32":
-    import win32gui
     import win32con
+    import win32gui
     import win32process
 elif sys.platform == "darwin":
     import Quartz
 
 
+def isExactGameTitle(title: str, titleKeyword: str) -> bool:
+    """Chỉ khớp tiêu đề game chính xác (bỏ qua hoa thường và khoảng trắng)."""
+    if not title or not titleKeyword:
+        return False
+    return title.strip().lower().replace(" ", "") == titleKeyword.strip().lower().replace(" ", "")
+
+
 def _findWindowWin32(titleKeyword: str) -> int | None:
-    """Tìm HWND trên Windows theo tiêu đề cửa sổ, bỏ qua cửa sổ cùng PID."""
+    """Tìm HWND trên Windows có tiêu đề khớp chính xác game, bỏ qua cửa sổ cùng PID."""
     currentPid = os.getpid()
-    keywordLower = titleKeyword.strip().lower()
-    exactMatches = []
-    partialMatches = []
+    matches = []
 
     def enumHandler(hwnd, _):
         if not win32gui.IsWindowVisible(hwnd):
             return
         title = win32gui.GetWindowText(hwnd)
-        if not title:
+        if not isExactGameTitle(title, titleKeyword):
             return
         _, windowPid = win32process.GetWindowThreadProcessId(hwnd)
         if windowPid == currentPid:
             return
-        titleLower = title.strip().lower()
-        if titleLower == keywordLower:
-            exactMatches.append(hwnd)
-        elif keywordLower in titleLower:
-            partialMatches.append(hwnd)
+        matches.append(hwnd)
 
     win32gui.EnumWindows(enumHandler, None)
-    if exactMatches:
-        return exactMatches[0]
-    if partialMatches:
-        return partialMatches[0]
-    return None
+    return matches[0] if matches else None
 
 
 def _getMacWindows() -> list[dict]:
@@ -57,37 +53,18 @@ def _getMacWindows() -> list[dict]:
 
 
 def _findWindowMac(titleKeyword: str) -> int | None:
-    """Tìm CGWindowNumber trên macOS theo tên app hoặc tiêu đề cửa sổ."""
+    """Tìm CGWindowNumber trên macOS có tên app/tiêu đề khớp chính xác game."""
     currentPid = os.getpid()
-    keywordLower = titleKeyword.strip().lower()
-    keywordCompact = keywordLower.replace(" ", "")
-    exactMatches = []
-    partialMatches = []
-
     for win in _getMacWindows():
-        if win.get("kCGWindowOwnerPID") == currentPid:
+        if win.get("kCGWindowOwnerPID") == currentPid or win.get("kCGWindowLayer", 0) != 0:
             continue
-        layer = win.get("kCGWindowLayer", 0)
-        if layer != 0:
-            continue
-        ownerName = str(win.get("kCGWindowOwnerName", "") or "").strip()
-        winTitle = str(win.get("kCGWindowName", "") or "").strip()
+        ownerName = str(win.get("kCGWindowOwnerName", "") or "")
+        winTitle = str(win.get("kCGWindowName", "") or "")
         bounds = win.get("kCGWindowBounds", {})
         if bounds.get("Width", 0) < 200 or bounds.get("Height", 0) < 200:
             continue
-
-        winId = win.get("kCGWindowNumber")
-        ownerCompact = ownerName.lower().replace(" ", "")
-        titleCompact = winTitle.lower().replace(" ", "")
-        if ownerCompact == keywordCompact or titleCompact == keywordCompact:
-            exactMatches.append(winId)
-        elif keywordCompact in ownerCompact or keywordCompact in titleCompact:
-            partialMatches.append(winId)
-
-    if exactMatches:
-        return exactMatches[0]
-    if partialMatches:
-        return partialMatches[0]
+        if isExactGameTitle(ownerName, titleKeyword) or isExactGameTitle(winTitle, titleKeyword):
+            return win.get("kCGWindowNumber")
     return None
 
 
@@ -113,11 +90,25 @@ def isWindowReady(hwnd: int | None) -> bool:
     return False
 
 
+def isWindowForeground(hwnd: int | None) -> bool:
+    """Kiểm tra cửa sổ game có đang ở trên cùng (không bị cửa sổ khác che/chiếm focus)."""
+    if not hwnd:
+        return False
+    if sys.platform == "win32":
+        return isWindowReady(hwnd) and win32gui.GetForegroundWindow() == hwnd
+    if sys.platform == "darwin":
+        for win in _getMacWindows():
+            if win.get("kCGWindowLayer", 0) != 0:
+                continue
+            bounds = win.get("kCGWindowBounds", {})
+            if bounds.get("Width", 0) < 200 or bounds.get("Height", 0) < 200:
+                continue
+            return win.get("kCGWindowNumber") == hwnd
+    return False
+
+
 def getClientRectScreen(hwnd: int, minWidth: int = 200, minHeight: int = 200) -> tuple[int, int, int, int] | None:
-    """
-    Lấy vùng client thực tế của cửa sổ game theo tọa độ logic: (left, top, width, height).
-    Trả về None nếu cửa sổ bị thu nhỏ hoặc kích thước quá nhỏ.
-    """
+    """Lấy vùng client thực tế của cửa sổ game theo tọa độ logic: (left, top, width, height)."""
     if not hwnd:
         return None
     if sys.platform == "win32":
@@ -143,10 +134,16 @@ def getClientRectScreen(hwnd: int, minWidth: int = 200, minHeight: int = 200) ->
                 height = int(bounds.get("Height", 0))
                 if width < minWidth or height < minHeight:
                     return None
-                left = int(bounds.get("X", 0))
-                top = int(bounds.get("Y", 0))
-                return (left, top, width, height)
+                return (int(bounds.get("X", 0)), int(bounds.get("Y", 0)), width, height)
     return None
+
+
+def isPointInClientRect(rect: tuple[int, int, int, int] | None, x: int, y: int) -> bool:
+    """Kiểm tra tọa độ (x, y) có nằm trong vùng client hiện tại của cửa sổ game không."""
+    if rect is None:
+        return False
+    left, top, width, height = rect
+    return left <= x < left + width and top <= y < top + height
 
 
 def focusGameWindow(hwnd: int) -> bool:

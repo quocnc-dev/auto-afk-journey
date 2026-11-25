@@ -23,11 +23,17 @@ def _wait(bot, seconds: float) -> bool:
 
 
 def _safeClick(bot, x: int, y: int) -> bool:
-    """Chỉ click khi bot chưa bị yêu cầu dừng."""
+    """Chỉ click khi chưa nhận Stop và cửa sổ game vẫn hợp lệ tại tọa độ (x, y)."""
     if bot._stop_event.is_set():
         return False
-    bot.ctrl.click(x, y)
-    return not bot._stop_event.is_set()
+    if hasattr(bot, "canInteractAt") and not bot.canInteractAt(x, y):
+        bot._log("⚠️ Cửa sổ game đã bị che, di chuyển hoặc mất focus — hủy click để tránh bấm nhầm!")
+        return False
+    try:
+        res = bot.ctrl.click(x, y, stop_event=bot._stop_event)
+    except TypeError:
+        res = bot.ctrl.click(x, y)
+    return (res is not False) and not bot._stop_event.is_set()
 
 
 def _safeEscape(bot) -> bool:
@@ -219,8 +225,9 @@ def run_auto_afk(bot):
             _safeClick(bot, finishHit[0], finishHit[1])
             failedAttempts = 0
             preferChallenge = True
-            lastProgressTime = time.time()
-            lastStateKey = "auto_battle_complete"
+            if lastStateKey != "auto_battle_complete":
+                lastProgressTime = time.time()
+                lastStateKey = "auto_battle_complete"
             _wait(bot, 2.5)
             continue
 
@@ -247,8 +254,9 @@ def run_auto_afk(bot):
             _safeClick(bot, originX + int(w * 0.5), originY + int(h * 0.5))
             failedAttempts = 0
             preferChallenge = True
-            lastProgressTime = time.time()
-            lastStateKey = "victory"
+            if lastStateKey != "victory":
+                lastProgressTime = time.time()
+                lastStateKey = "victory"
             _wait(bot, 3.0)
             continue
 

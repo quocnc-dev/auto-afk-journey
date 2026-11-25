@@ -26,9 +26,9 @@ class ScreenCapture:
             img = np.array(shot)
             return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
         except Exception:
-            # Fallback: dùng PIL.ImageGrab (chậm hơn nhưng ổn định hơn)
+            # Fallback: dùng PIL.ImageGrab (bật all_screens để hỗ trợ đa màn hình)
             from PIL import ImageGrab
-            pil_img = ImageGrab.grab()
+            pil_img = ImageGrab.grab(all_screens=True)
             img = np.array(pil_img)
             return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
@@ -41,7 +41,10 @@ class ScreenCapture:
             return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
         except Exception:
             from PIL import ImageGrab
-            pil_img = ImageGrab.grab(bbox=(int(x), int(y), int(x + w), int(y + h)))
+            pil_img = ImageGrab.grab(
+                bbox=(int(x), int(y), int(x + w), int(y + h)),
+                all_screens=True,
+            )
             img = np.array(pil_img)
             return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 

@@ -20,7 +20,13 @@ import config
 from vision import ScreenCapture, ImageMatcher
 from controller import Controller
 from ocr_engine import OcrEngine
-from window_manager import findGameWindow, getClientRectScreen, focusGameWindow
+from window_manager import (
+    findGameWindow,
+    focusGameWindow,
+    getClientRectScreen,
+    isPointInClientRect,
+    isWindowForeground,
+)
 from modules.auto_afk import run_auto_afk
 
 logger = logging.getLogger("AFK_Bot")
@@ -87,17 +93,28 @@ class BotEngine:
 
     def captureGameScreen(self):
         """
-        Chụp riêng vùng client của cửa sổ game AFK Journey.
-        Không fallback toàn màn hình khi mất cửa sổ để tránh click nhầm ứng dụng khác.
-        Trả về (image_bgr | None, originX, originY, rect | None).
+        Chụp riêng vùng client của cửa sổ game AFK Journey khi đang foreground.
+        Không fallback toàn màn hình hoặc chụp khi bị cửa sổ khác che.
         """
         hwnd = findGameWindow(config.GAME_WINDOW_TITLE)
         self.gameHwnd = hwnd
-        rect = getClientRectScreen(hwnd) if hwnd else None
+        if not hwnd or not isWindowForeground(hwnd):
+            return None, 0, 0, None
+        rect = getClientRectScreen(hwnd)
         if rect is None:
             return None, 0, 0, None
         img, originX, originY = self.capture.capture_window(rect)
         return img, originX, originY, rect
+
+    def canInteractAt(self, x: int, y: int) -> bool:
+        """Kiểm tra lại cửa sổ game đang foreground và chứa điểm click (x, y) ngay trước khi bấm."""
+        if self._stop_event.is_set():
+            return False
+        hwnd = findGameWindow(config.GAME_WINDOW_TITLE)
+        if not hwnd or not isWindowForeground(hwnd):
+            return False
+        rect = getClientRectScreen(hwnd)
+        return isPointInClientRect(rect, x, y)
 
     # ────────────────────────────────────────────
     #  Main Loop

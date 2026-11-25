@@ -1,6 +1,6 @@
 """
 Module điều khiển chuột và bàn phím đa nền tảng:
-- Windows: hỗ trợ đa màn hình qua Virtual Desktop (MOUSEEVENTF_VIRTUALDESK) + pydirectinput
+- Windows: Virtual Desktop (MOUSEEVENTF_VIRTUALDESK) + kiểm tra giá trị trả về của SendInput
 - macOS: dùng pyautogui (tọa độ điểm logic CoreGraphics)
 """
 
@@ -38,7 +38,6 @@ if sys.platform == "win32":
     _inputBackend.FAILSAFE = False
     _inputBackend.PAUSE = 0.05
 
-    # Bật DPI awareness ngay khi import trên Windows
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(2)
     except Exception:
@@ -47,8 +46,8 @@ if sys.platform == "win32":
         except Exception:
             pass
 
-    def _moveCursor(x: int, y: int):
-        """Di chuyển chuột theo Virtual Desktop để đúng cả trên màn hình phụ."""
+    def _moveCursor(x: int, y: int) -> bool:
+        """Di chuyển chuột theo Virtual Desktop; trả về False nếu SendInput không gửi được."""
         user32 = ctypes.windll.user32
         vx = user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
         vy = user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
@@ -67,15 +66,32 @@ if sys.platform == "win32":
             ctypes.pointer(extra),
         )
         cmd = _inputBackend.Input(ctypes.c_ulong(0), inpUnion)
-        _inputBackend.SendInput(1, ctypes.pointer(cmd), ctypes.sizeof(cmd))
+        sent = _inputBackend.SendInput(1, ctypes.pointer(cmd), ctypes.sizeof(cmd))
+        if sent != 1:
+            logger.warning(f"SendInput di chuyển chuột thất bại tại ({x}, {y}), sent={sent}")
+            return False
+        return True
 else:
     import pyautogui as _inputBackend
 
     _inputBackend.FAILSAFE = False
     _inputBackend.PAUSE = 0.05
 
-    def _moveCursor(x: int, y: int):
-        _inputBackend.moveTo(int(x), int(y))
+    def _moveCursor(x: int, y: int) -> bool:
+        try:
+            _inputBackend.moveTo(int(x), int(y))
+            return True
+        except Exception as exc:
+            logger.warning(f"Di chuyển chuột thất bại tại ({x}, {y}): {exc}")
+            return False
+
+
+def _sleepWithStop(seconds: float, stop_event=None) -> bool:
+    """Chờ có hỗ trợ ngắt sớm qua stop_event; trả về False nếu đã có lệnh Stop."""
+    if stop_event is not None:
+        return not stop_event.wait(seconds)
+    time.sleep(seconds)
+    return True
 
 
 class Controller:
@@ -84,73 +100,101 @@ class Controller:
     def __init__(self, delay_after_click: float = 0.5):
         self.delay_after_click = delay_after_click
 
-    def click(self, x: int, y: int, button: str = "left", delay: float = None):
-        """Di chuyển chuột đến (x, y) và click"""
+    def click(self, x: int, y: int, button: str = "left", delay: float = None, stop_event=None) -> bool:
+        """Di chuyển chuột đến (x, y) và click nếu không bị hủy giữa chừng và move thành công."""
         try:
-            _moveCursor(x, y)
-            time.sleep(0.05)
-            _inputBackend.click(button=button)
+            if stop_event is not None and stop_event.is_set():
+                return False
+            if not _moveCursor(x, y):
+                return False
+            if not _sleepWithStop(0.05, stop_event):
+                return False
+            if stop_event is not None and stop_event.is_set():
+                return False
 
-            sleep_time = delay if delay is not None else self.delay_after_click
-            time.sleep(sleep_time)
+            _inputBackend.click(button=button)
+            sleepTime = delay if delay is not None else self.delay_after_click
+            _sleepWithStop(sleepTime, stop_event)
             logger.debug(f"Click {button} tại ({x}, {y})")
+            return True
         except Exception as e:
             logger.error(f"Lỗi click tại ({x}, {y}): {e}")
+            return False
 
-    def double_click(self, x: int, y: int, delay: float = None):
-        """Double click tại (x, y)"""
+    def double_click(self, x: int, y: int, delay: float = None, stop_event=None) -> bool:
+        """Double click tại (x, y) an toàn theo stop_event."""
         try:
-            _moveCursor(x, y)
-            time.sleep(0.05)
-            _inputBackend.doubleClick()
+            if stop_event is not None and stop_event.is_set():
+                return False
+            if not _moveCursor(x, y):
+                return False
+            if not _sleepWithStop(0.05, stop_event):
+                return False
+            if stop_event is not None and stop_event.is_set():
+                return False
 
-            sleep_time = delay if delay is not None else self.delay_after_click
-            time.sleep(sleep_time)
+            _inputBackend.doubleClick()
+            sleepTime = delay if delay is not None else self.delay_after_click
+            _sleepWithStop(sleepTime, stop_event)
             logger.debug(f"Double click tại ({x}, {y})")
+            return True
         except Exception as e:
             logger.error(f"Lỗi double click tại ({x}, {y}): {e}")
+            return False
 
-    def move_to(self, x: int, y: int):
+    def move_to(self, x: int, y: int) -> bool:
         """Di chuyển chuột đến (x, y) không click"""
         try:
-            _moveCursor(x, y)
+            return _moveCursor(x, y)
         except Exception as e:
             logger.error(f"Lỗi di chuyển chuột đến ({x}, {y}): {e}")
+            return False
 
-    def press_key(self, key: str, delay: float = 0.3):
+    def press_key(self, key: str, delay: float = 0.3, stop_event=None) -> bool:
         """Nhấn phím (ví dụ: 'esc', 'enter', 'space')"""
         try:
+            if stop_event is not None and stop_event.is_set():
+                return False
             _inputBackend.press(key)
-            time.sleep(delay)
+            _sleepWithStop(delay, stop_event)
             logger.debug(f"Nhấn phím: {key}")
+            return True
         except Exception as e:
             logger.error(f"Lỗi nhấn phím {key}: {e}")
+            return False
 
-    def press_escape(self):
-        self.press_key("esc")
+    def press_escape(self, stop_event=None):
+        return self.press_key("esc", stop_event=stop_event)
 
-    def press_enter(self):
-        self.press_key("enter")
+    def press_enter(self, stop_event=None):
+        return self.press_key("enter", stop_event=stop_event)
 
-    def drag(self, x1: int, y1: int, x2: int, y2: int, duration: float = 0.4):
+    def drag(self, x1: int, y1: int, x2: int, y2: int, duration: float = 0.4, stop_event=None) -> bool:
         """Kéo từ (x1,y1) đến (x2,y2)"""
         try:
-            _moveCursor(x1, y1)
-            time.sleep(0.05)
+            if not _moveCursor(x1, y1) or not _sleepWithStop(0.05, stop_event):
+                return False
             _inputBackend.mouseDown()
-            steps = max(5, int(duration / 0.03))
-            for step in range(1, steps + 1):
-                curX = int(x1 + (x2 - x1) * step / steps)
-                curY = int(y1 + (y2 - y1) * step / steps)
-                _moveCursor(curX, curY)
-                time.sleep(duration / steps)
-            _inputBackend.mouseUp()
-            time.sleep(0.2)
-            logger.debug(f"Drag ({x1},{y1}) → ({x2},{y2})")
+            try:
+                steps = max(5, int(duration / 0.03))
+                for step in range(1, steps + 1):
+                    if stop_event is not None and stop_event.is_set():
+                        return False
+                    curX = int(x1 + (x2 - x1) * step / steps)
+                    curY = int(y1 + (y2 - y1) * step / steps)
+                    if not _moveCursor(curX, curY):
+                        return False
+                    if not _sleepWithStop(duration / steps, stop_event):
+                        return False
+            finally:
+                _inputBackend.mouseUp()
+            _sleepWithStop(0.2, stop_event)
+            return True
         except Exception as e:
             logger.error(f"Lỗi drag từ ({x1}, {y1}) đến ({x2}, {y2}): {e}")
+            return False
 
-    def click_template_result(self, result: tuple, delay: float = None):
+    def click_template_result(self, result: tuple, delay: float = None, stop_event=None):
         """Click vào kết quả từ ImageMatcher.find()"""
         if result and len(result) >= 2:
-            self.click(result[0], result[1], delay=delay)
+            self.click(result[0], result[1], delay=delay, stop_event=stop_event)

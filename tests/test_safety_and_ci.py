@@ -44,7 +44,7 @@ class TestSafetyAndCI(unittest.TestCase):
             "config.py", "window_manager.py", "ocr_engine.py", "vision.py",
             "controller.py", "bot_engine.py", "main.py", "ui_layout.py", "ui_tabs.py",
             "capture_template.py", "modules/auto_afk.py",
-            "tests/test_ocr_and_logic.py", "tests/test_safety_and_ci.py",
+            "tests/test_ocr_and_logic.py", "tests/test_safety_and_ci.py", "tests/test_p1_p2_fixes.py",
         ]:
             with open(os.path.join(root, rel), encoding="utf-8") as f:
                 self.assertLessEqual(len(f.readlines()), 300, f"{rel} vượt 300 dòng")

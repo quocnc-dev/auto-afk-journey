@@ -61,7 +61,7 @@ OCR_KEYWORDS = {
     "copy_team": ["sao chep", "copy"],
     "auto_battle_complete": ["tu dong hoan", "tu dong hoan tat", "auto battle complete"],
     "auto_battle": ["tu dong", "tudong", "auto battle"],
-    "challenge_hl": ["huyen linh", "thach dau"],
+    "challenge_hl": ["huyen linh", "huyen linh sv", "thach dau huyen linh"],
     "fight": ["chien dau", "battle"],
     "afk_icon": ["afk"],
     "victory": ["da tang phan", "thuong afk", "thurong afk", "victory"],
