@@ -52,6 +52,14 @@ CHECKBOX_GREEN_MIN_RATIO = 0.12
 ROI_FULL_WINDOW = (0.0, 0.0, 1.0, 1.0)
 ROI_NEXT_TEAM_AREA = (0.60, 0.20, 0.99, 0.80)
 ROI_AFK_CORNER = (0.55, 0.65, 1.0, 1.0)
+ROI_AFK_CORNER_LEFT = (0.0, 0.78, 0.35, 1.0)
+
+# Thông số nhận diện & chờ trạng thái Tự Động Xử Lý ở màn hình chính
+AUTO_PROGRESS_POLL_INTERVAL = 2.5
+AUTO_PROGRESS_DONE_WORD = "xong"
+AUTO_PROGRESS_MAX_DX_HEIGHT_MULT = 4
+AUTO_PROGRESS_MAX_DY_HEIGHT_MULT = 4.0
+AUTO_PROGRESS_SPLIT_DY_MULT = 2.5
 
 # Từ khóa OCR đã chuẩn hóa (không dấu, chữ thường)
 OCR_KEYWORDS = {
@@ -61,16 +69,22 @@ OCR_KEYWORDS = {
     "copy_team": ["sao chep", "copy"],
     "auto_battle_complete": ["tu dong hoan", "tu dong hoan tat", "auto battle complete"],
     "auto_battle": ["tu dong", "tudong", "auto battle"],
+    "auto_progress": ["tu dong xu ly", "auto progress"],
+    "auto_progress_part": ["xu ly"],
     "challenge_hl": ["huyen linh", "huyen linh sv", "thach dau huyen linh"],
     "fight": ["chien dau", "battle"],
     "afk_icon": ["afk"],
+    "peak_stage_icon": ["man choi dinh cao"],
     "victory": ["da tang phan", "thuong afk", "thurong afk", "victory"],
     "back": ["quay lai", "back"],
 }
 
-# Từ khóa loại trừ khi tìm nút Chiến Đấu thường và nút Auto
+# Từ khóa loại trừ khi tìm nút Chiến Đấu thường và nút Tự Động
 FIGHT_EXCLUDE_KEYS = ["auto_battle", "auto_battle_complete", "challenge_hl", "stats"]
-FIGHT_EXTRA_EXCLUDES = ["cap nhat", "update"]
+# FIGHT_EXTRA_EXCLUDES = ["cap nhat", "update"]
+FIGHT_EXTRA_EXCLUDES = ["cap nhat", "update", "che do"]
+AUTO_BATTLE_EXCLUDE_KEYS = ["auto_battle_complete", "auto_progress"]
+AUTO_BATTLE_EXTRA_EXCLUDES = ["xu ly", "xong"]
 
 # Tỷ lệ dịch chuyển tương đối (theo kích thước cửa sổ hoặc chiều cao chữ)
 DEFEAT_BACK_OFFSET_X_RATIO = -0.18

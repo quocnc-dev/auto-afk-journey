@@ -9,7 +9,8 @@ import numpy as np
 
 import config
 from modules import auto_afk
-from ocr_engine import OcrEngine, findNextTeamArrow, inspectCheckboxByText, normalizeText
+from modules.afk_detectors import findAutoProgressState, findMainLobbyEntry
+from ocr_engine import OcrEngine, OcrItem, findNextTeamArrow, inspectCheckboxByText, normalizeText
 
 
 class _MockCtrl:
@@ -178,6 +179,62 @@ class TestOcrAndLogic(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(len(bot.ctrl.clicks), 4)
         self.assertEqual(bot.ctrl.clicks[-1], (640, 360))
+
+    def _ocrItem(self, raw: str, cx: int, cy: int, w: int = 100, h: int = 24) -> OcrItem:
+        norm = normalizeText(raw)
+        return OcrItem(raw, norm, norm.replace(" ", ""), 0.95, cx - w // 2, cy - h // 2, cx + w // 2, cy + h // 2)
+
+    def test_main_screen_auto_progress_running_stands_still_and_done_reenters(self):
+        frame = np.zeros((1013, 775, 3), dtype=np.uint8)
+        runningItems = [
+            self._ocrItem("Tự Động Xử Lý", 75, 960, w=130, h=22),
+            self._ocrItem("Không", 130, 990, w=60, h=24),
+            self._ocrItem("Chế Độ", 310, 955, w=70, h=20),
+            self._ocrItem("Chiến Đấu", 310, 980, w=90, h=20),
+        ]
+        doneItems = [
+            self._ocrItem("Tự Động Xử Lý", 75, 960, w=130, h=22),
+            self._ocrItem("Xong!", 75, 990, w=90, h=28),
+            self._ocrItem("Chế Độ", 310, 955, w=70, h=20),
+            self._ocrItem("Chiến Đấu", 310, 980, w=90, h=20),
+        ]
+        splitRunning = [
+            self._ocrItem("Tự Động", 70, 950, w=80, h=20),
+            self._ocrItem("Xử Lý", 70, 974, w=70, h=20),
+        ]
+
+        bot = MockBot(self.ocr, [frame, frame, frame])
+        seq = [runningItems, runningItems, doneItems]
+        fakeNow = [0.0]
+        origScan, origTime, origWait = bot.ocr.scanImage, auto_afk.time.time, auto_afk._wait
+        bot.ocr.scanImage = lambda img, originX=0, originY=0, roi=None: seq.pop(0) if seq else []
+        auto_afk.time.time = lambda: (fakeNow.__setitem__(0, fakeNow[0] + 900.0) or fakeNow[0])
+        auto_afk._wait = lambda b, s: True
+        try:
+            stateSplit = findAutoProgressState(bot, splitRunning, auto_afk._findKey)
+            self.assertEqual(stateSplit, (False, 70, 950))
+            ok = auto_afk.run_auto_afk(bot)
+        finally:
+            bot.ocr.scanImage, auto_afk.time.time, auto_afk._wait = origScan, origTime, origWait
+
+        self.assertTrue(ok)
+        self.assertEqual(bot.ctrl.clicks, [(75, 990)])
+
+    def test_peak_stage_entry_only_matches_bottom_corners(self):
+        frame = np.zeros((1013, 775, 3), dtype=np.uint8)
+        rect = (0, 0, 775, 1013)
+        bot = MockBot(self.ocr, [frame])
+        origScan = bot.ocr.scanImage
+        bot.ocr.scanImage = lambda img, originX=0, originY=0, roi=None: []
+        try:
+            topHeader = [self._ocrItem("Màn Chơi Đỉnh Cao", 380, 60, w=180, h=24)]
+            self.assertIsNone(findMainLobbyEntry(bot, frame, 0, 0, rect, topHeader, auto_afk._findKey))
+            cornerBtn = [self._ocrItem("Màn Chơi Đỉnh Cao", 75, 940, w=130, h=20)]
+            hit = findMainLobbyEntry(bot, frame, 0, 0, rect, cornerBtn, auto_afk._findKey)
+            self.assertIsNotNone(hit)
+            self.assertEqual((hit[0], hit[1]), (75, 940))
+        finally:
+            bot.ocr.scanImage = origScan
 
 
 if __name__ == "__main__":
