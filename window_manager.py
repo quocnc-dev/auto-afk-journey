@@ -60,6 +60,7 @@ def _findWindowMac(titleKeyword: str) -> int | None:
     """Tìm CGWindowNumber trên macOS theo tên app hoặc tiêu đề cửa sổ."""
     currentPid = os.getpid()
     keywordLower = titleKeyword.strip().lower()
+    keywordCompact = keywordLower.replace(" ", "")
     exactMatches = []
     partialMatches = []
 
@@ -76,9 +77,11 @@ def _findWindowMac(titleKeyword: str) -> int | None:
             continue
 
         winId = win.get("kCGWindowNumber")
-        if ownerName.lower() == keywordLower or winTitle.lower() == keywordLower:
+        ownerCompact = ownerName.lower().replace(" ", "")
+        titleCompact = winTitle.lower().replace(" ", "")
+        if ownerCompact == keywordCompact or titleCompact == keywordCompact:
             exactMatches.append(winId)
-        elif keywordLower in ownerName.lower() or keywordLower in winTitle.lower():
+        elif keywordCompact in ownerCompact or keywordCompact in titleCompact:
             partialMatches.append(winId)
 
     if exactMatches:

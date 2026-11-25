@@ -41,13 +41,18 @@ class BotEngine:
     Chạy trên thread riêng, giao tiếp với UI qua callback.
     """
 
-    def __init__(self, log_callback: Callable[[str], None] = None):
+    def __init__(
+        self,
+        log_callback: Callable[[str], None] = None,
+        prompt_callback: Callable[[str, str], None] = None,
+    ):
         self.capture = ScreenCapture()
         self.matcher = ImageMatcher(config.TEMPLATES_DIR, config.MATCH_THRESHOLD)
         self.ocr = OcrEngine(config.OCR_FUZZY_THRESHOLD)
         self.ctrl = Controller(delay_after_click=config.DELAY_AFTER_CLICK)
 
         self.log_callback = log_callback or (lambda msg: None)
+        self.prompt_callback = prompt_callback
         self.state = State.IDLE
         self.gameHwnd: int | None = None
 
@@ -142,27 +147,22 @@ class BotEngine:
                 self.state = State.CHECK_POPUP
                 return
 
-        # Game chưa mở → Hiện popup yêu cầu người dùng mở game
+        # Game chưa mở → Hỏi người dùng qua UI main-thread (an toàn trên macOS & Windows)
         self._log("⚠️ Không tìm thấy cửa sổ game! Đang chờ người dùng mở game...")
 
-        import tkinter as tk
-        from tkinter import messagebox
-
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
-        messagebox.showinfo(
-            "Yêu cầu mở game",
+        promptMsg = (
             f"Không tìm thấy cửa sổ '{config.GAME_WINDOW_TITLE}' đang mở.\n\n"
             "Vui lòng:\n"
             "1. Mở game AFK Journey lên (qua Launcher hoặc trực tiếp).\n"
             "2. Đảm bảo game đã vào sảnh chính và không bị thu nhỏ.\n"
-            "3. Bấm OK dưới đây để bot tiếp tục.",
-            parent=root,
+            "3. Bấm OK dưới đây để bot tiếp tục."
         )
-        root.destroy()
+        if self.prompt_callback is not None:
+            self.prompt_callback("Yêu cầu mở game", promptMsg)
+        else:
+            self._stop_event.wait(3.0)
 
-        self._log("🔄 Người dùng xác nhận đã mở game, kiểm tra lại...")
+        self._log("🔄 Đang kiểm tra lại cửa sổ game...")
 
     def _state_check_popup(self):
         """Đóng các popup quảng cáo nếu có (dùng template fallback nếu người dùng có sẵn)"""

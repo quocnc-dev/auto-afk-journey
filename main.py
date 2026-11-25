@@ -67,7 +67,7 @@ class AFKBotApp(ctk.CTk):
         self.minsize(860, 620)
         self.configure(fg_color=COLORS["bg_main"])
 
-        self.bot = BotEngine(log_callback=self._on_log)
+        self.bot = BotEngine(log_callback=self._on_log, prompt_callback=self._on_prompt)
         self.bot.progress_callback = self._on_progress
 
         self._log_lines = []
@@ -361,6 +361,19 @@ class AFKBotApp(ctk.CTk):
 
     def _on_log(self, msg):
         self.after(0, self._append_log, msg)
+
+    def _on_prompt(self, title: str, message: str):
+        """Hiển thị hộp thoại thông báo trên main UI thread (tránh crash Cocoa trên macOS)."""
+        doneEvent = threading.Event()
+
+        def showDialog():
+            try:
+                messagebox.showinfo(title, message, parent=self)
+            finally:
+                doneEvent.set()
+
+        self.after(0, showDialog)
+        doneEvent.wait()
 
     def _on_progress(self, task, done, total):
         self.after(0, self._update_stat, "current_task", task.upper())

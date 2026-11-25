@@ -99,8 +99,11 @@ def _handlePickTeamInStats(bot, failedAttempts: int):
         if nextArrow:
             bot._log(f"🖱 Click chuyển sang Team tiếp theo ({teamMoves} lần)...")
             for _ in range(teamMoves):
+                if bot._stop_event.is_set():
+                    return
                 bot.ctrl.click(nextArrow[0], nextArrow[1])
-                time.sleep(0.8)
+                if bot._stop_event.wait(0.8):
+                    return
             statsScreen, ox, oy, _, statsItems = _scanGame(bot)
         else:
             bot._log("⚠️ Không tìm thấy nút chuyển Team, nhấn ESC.")
