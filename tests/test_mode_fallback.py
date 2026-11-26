@@ -22,8 +22,9 @@ class TestModeFallback(unittest.TestCase):
     def setUpClass(cls):
         cls.ocr = OcrEngine()
 
-    def _runWithScenes(self, scenes: list[list[OcrItem]]):
-        frame = np.zeros((934, 676, 3), dtype=np.uint8)
+    def _runWithScenes(self, scenes: list[list[OcrItem]], frame: np.ndarray | None = None):
+        if frame is None:
+            frame = np.zeros((934, 676, 3), dtype=np.uint8)
         bot = MockBot(self.ocr, [frame] * len(scenes))
         queue = list(scenes)
         origScan, origWait = bot.ocr.scanImage, auto_afk._wait
@@ -129,13 +130,15 @@ class TestModeFallback(unittest.TestCase):
         self.assertEqual(clicks, [(285, 892)])
 
     def test_copy_team_screen_detected_directly_in_main_loop(self):
+        frame = np.zeros((934, 676, 3), dtype=np.uint8)
+        frame[8:34, 14:40] = (50, 220, 50)  # Ô checkbox màu xanh lá đã tích ở bên trái chữ
         copyModalItems = [
             _ocrItem("Chỉ hiển thị đội hình đã sở hữu", 180, 20, w=260, h=20),
             _ocrItem("Màn Chơi Đỉnh Cao Huyễn Linh", 338, 52, w=260, h=20),
             _ocrItem("Sinh Vật 557", 338, 74, w=140, h=20),
             _ocrItem("Sao chép", 380, 880, w=160, h=30),
         ]
-        clicks = self._runWithScenes([copyModalItems])
+        clicks = self._runWithScenes([copyModalItems], frame=frame)
         self.assertEqual(clicks, [(380, 880)])
 
     def test_battle_timer_stands_still_and_pause_prompt_clicks_cancel_x(self):
