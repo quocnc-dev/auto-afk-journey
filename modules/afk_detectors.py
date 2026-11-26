@@ -122,8 +122,14 @@ def findInBattleAuto(bot, items, findKeyFn):
 
 
 def isMainOverworldScreen(bot, items, findKeyFn) -> bool:
-    """Kiểm tra có đang ở màn hình chính (có thanh điều hướng sảnh chính) để không click nhầm sang trận."""
-    return findKeyFn(bot, items, "main_world_nav") is not None
+    """Kiểm tra có đang ở màn hình chính (khớp >= 2 nút điều hướng sảnh chính toàn cụm) để không click nhầm."""
+    hits = 0
+    for kw in config.OCR_KEYWORDS.get("main_world_nav", []):
+        if bot.ocr.findText(items, [kw], wholePhrase=True) is not None:
+            hits += 1
+            if hits >= 2:
+                return True
+    return False
 
 
 def _scanCornerUpscaled(bot, screen, originX: int, originY: int, roi: tuple[float, float, float, float], findKeyFn):

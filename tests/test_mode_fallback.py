@@ -114,6 +114,20 @@ class TestModeFallback(unittest.TestCase):
         noCornerText = mainScreenItems[:-2]
         self.assertEqual(self._runWithScenes([noCornerText]), [])
 
+    def test_prep_screen_with_buff_text_clicks_auto_battle_not_blocked_as_main_screen(self):
+        prepItems = [
+            _ocrItem("Màn Chơi Đỉnh Cao Huyễn", 338, 42, w=260, h=20),
+            _ocrItem("Linh Sinh Vật 552", 338, 64, w=180, h=20),
+            _ocrItem("Băng Giá Tiên Phong", 120, 190, w=180, h=22),
+            _ocrItem("Tất cả đồng minh tăng 35%", 120, 230, w=220, h=20),
+            _ocrItem("hiệu ứng thời tiết bão tuyết", 120, 280, w=220, h=20),
+            _ocrItem("Thành Tích", 125, 900, w=80, h=22),
+            _ocrItem("Chiến Đấu Tự Động", 285, 892, w=180, h=28),
+            _ocrItem("Chiến Đấu", 545, 892, w=150, h=30),
+        ]
+        clicks = self._runWithScenes([prepItems])
+        self.assertEqual(clicks, [(285, 892)])
+
 
 if __name__ == "__main__":
     unittest.main()
