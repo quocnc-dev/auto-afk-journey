@@ -57,6 +57,7 @@ AUTO_PROGRESS_MAX_DY_HEIGHT_MULT = 4.0
 AUTO_PROGRESS_SPLIT_DY_MULT = 2.5
 PAUSE_CANCEL_OFFSET_MULT = 1.35     # Nút X của popup tắt auto: cách tâm nút ✓ xanh N lần bề rộng nút ✓ về bên trái
 PAUSE_PROMPT_STUCK_REPEAT = 3       # Popup tắt auto còn sau N lần bấm X liên tiếp -> lưu ảnh debug
+LAUNCH_FOREGROUND_WAIT = 20.0       # Sau khi bấm OK hộp thoại 'mở / focus game': chờ người dùng bấm vào game tối đa N giây
 POPUP_SETTLE_MAX_WAIT = 1.2         # Popup vừa hiện còn đang trượt vào: chờ đứng yên tối đa N giây rồi mới dò lại nút X
 POPUP_STABLE_POLL = 0.15
 POPUP_STABLE_PAIRS = 2              # Số cặp khung liên tiếp phải đứng yên mới coi popup đã hết trượt

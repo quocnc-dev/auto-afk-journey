@@ -179,13 +179,11 @@ class BotEngine:
                         "Vui lòng:\n"
                         "1. Mở System Settings → Privacy & Security → Accessibility.\n"
                         "2. Bật quyền cho AFKJourneyBot (nếu vừa cập nhật bản mới, hãy tắt/xóa rồi thêm lại).\n"
-                        "3. Bấm OK dưới đây để bot kiểm tra lại."
+                        "3. Bấm OK để bot kiểm tra lại, hoặc Cancel để dừng bot."
                     )
                     if self.prompt_callback is not None:
                         openMacAccessibilitySettings()
-                        self.prompt_callback("Yêu cầu quyền Trợ năng (macOS)", accMsg)
-                    else:
-                        self._stop_event.wait(3.0)
+                    self._askUser("Yêu cầu quyền Trợ năng (macOS)", accMsg)
                     return
                 self._log(f"✅ Đã bắt được cửa sổ '{config.GAME_WINDOW_TITLE}' ({rect[2]}x{rect[3]}), tiếp tục...")
                 self.state = State.AUTO_AFK if self.task_auto_afk else State.DONE
@@ -198,14 +196,35 @@ class BotEngine:
             "Vui lòng:\n"
             "1. Mở game AFK Journey lên và bấm chuột vào cửa sổ game để đưa lên trên cùng.\n"
             "2. Đảm bảo game đã vào sảnh chính và không bị thu nhỏ.\n"
-            "3. Bấm OK dưới đây để bot tiếp tục."
+            "3. Bấm OK rồi bấm vào cửa sổ game trong vòng "
+            f"{config.LAUNCH_FOREGROUND_WAIT:.0f} giây, hoặc Cancel để dừng bot."
         )
-        if self.prompt_callback is not None:
-            self.prompt_callback("Yêu cầu mở / focus game", promptMsg)
-        else:
-            self._stop_event.wait(3.0)
-
+        if not self._askUser("Yêu cầu mở / focus game", promptMsg):
+            return
+        # Vừa đóng hộp thoại thì focus đang ở app bot -> kiểm tra lại ngay luôn thất bại và hỏi lại liên tục.
+        # Chờ người dùng bấm vào game (tối đa LAUNCH_FOREGROUND_WAIT giây) rồi mới kiểm tra lại.
+        self._log(f"⏳ Chờ bạn bấm vào cửa sổ game (tối đa {config.LAUNCH_FOREGROUND_WAIT:.0f}s)...")
+        deadline = time.monotonic() + config.LAUNCH_FOREGROUND_WAIT
+        while time.monotonic() < deadline:
+            hwnd = findGameWindow(config.GAME_WINDOW_TITLE)
+            if hwnd and isWindowForeground(hwnd):
+                break
+            if self._stop_event.wait(0.5):
+                return
         self._log("🔄 Đang kiểm tra lại cửa sổ game...")
+
+    def _askUser(self, title: str, message: str) -> bool:
+        """Hỏi người dùng qua hộp thoại OK/Cancel. Cancel -> dừng bot (hộp thoại modal chặn cả nút Stop). Trả về True nếu tiếp tục."""
+        if self._stop_event.is_set():
+            return False
+        if self.prompt_callback is None:
+            return not self._stop_event.wait(3.0)
+        if self.prompt_callback(title, message) is False:
+            self._log("🛑 Bạn đã chọn dừng bot từ hộp thoại.")
+            if not self._stop_event.is_set():  # UI có thể đã gọi stop() khi bấm Cancel
+                self.stop()
+            return False
+        return not self._stop_event.is_set()
 
     def _state_auto_afk(self):
         """Chạy nhánh nhiệm vụ Auto AFK và cập nhật trạng thái DONE/IDLE/ERROR chính xác."""

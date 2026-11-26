@@ -129,7 +129,11 @@ class TestP1P2Fixes(unittest.TestCase):
             bot_engine.getClientRectScreen = lambda _: (0, 0, 1280, 720)
             bot_engine.isWindowForeground = lambda _: False
             eng.state = bot_engine.State.LAUNCH_GAME
-            eng._state_launch_game()
+            origWaitFg, config.LAUNCH_FOREGROUND_WAIT = config.LAUNCH_FOREGROUND_WAIT, 0.0
+            try:
+                eng._state_launch_game()
+            finally:
+                config.LAUNCH_FOREGROUND_WAIT = origWaitFg
             self.assertEqual(eng.state, bot_engine.State.LAUNCH_GAME)
             self.assertEqual(len(prompts), 1)
         finally:

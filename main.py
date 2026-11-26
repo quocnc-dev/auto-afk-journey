@@ -105,18 +105,25 @@ class AFKBotApp(ctk.CTk):
     def _on_log(self, msg):
         self.after(0, self._append_log, msg)
 
-    def _on_prompt(self, title: str, message: str):
-        """Hiển thị hộp thoại thông báo trên main UI thread (tránh crash Cocoa trên macOS)."""
+    def _on_prompt(self, title: str, message: str) -> bool:
+        """
+        Hiển thị hộp thoại OK/Cancel trên main UI thread (tránh crash Cocoa trên macOS).
+        Trả về False khi người dùng bấm Cancel -> bot dừng (hộp thoại modal chặn nút Stop).
+        """
         doneEvent = threading.Event()
+        answer = {"ok": True}
 
         def showDialog():
             try:
-                messagebox.showinfo(title, message, parent=self)
+                answer["ok"] = bool(messagebox.askokcancel(title, message, parent=self))
+                if not answer["ok"]:
+                    self._on_stop()
             finally:
                 doneEvent.set()
 
         self.after(0, showDialog)
         doneEvent.wait()
+        return answer["ok"]
 
     def _append_log(self, msg):
         self._log_lines.append(msg)
