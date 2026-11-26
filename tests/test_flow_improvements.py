@@ -204,6 +204,19 @@ class TestPausePromptRealScreen(unittest.TestCase):
         self.assertLessEqual(abs(pos[0] - (ox + self.X_CENTER[0])), 20, pos)
         self.assertLessEqual(abs(pos[1] - (oy + self.X_CENTER[1])), 20, pos)
 
+    def test_cancel_x_on_forest_background(self):
+        # 14:42 build 31: cây xanh phía sau dính vào nút ✓ -> khung bao to ra -> bấm lệch trái 52px, kẹt popup
+        img = cv2.imread(os.path.join(os.path.dirname(self.FIXTURE), "pause_auto_prompt_forest_678x936.jpg"))
+        ox, oy, xCenter = 1000, 30, (385, 641)
+        items = self.ocr.scanImage(img, originX=ox, originY=oy)
+        bot = MockBot(self.ocr, [])
+        bot._scanRect = (ox, oy, 678, 936)
+        noOcrX = [it for it in items if it.normText.strip() != "x"]  # cả khi OCR không đọc ra chữ 'X'
+        for label, its in (("ocr X", items), ("green button", noOcrX)):
+            pos = findPauseAutoConfirmCancel(bot, img, ox, oy, its, auto_afk._findKey)
+            self.assertLessEqual(abs(pos[0] - (ox + xCenter[0])), 15, (label, pos))
+            self.assertLessEqual(abs(pos[1] - (oy + xCenter[1])), 15, (label, pos))
+
     def test_stuck_popup_saves_debug_snapshot(self):
         tmp = tempfile.mkdtemp(prefix="afk_pause_")
         try:

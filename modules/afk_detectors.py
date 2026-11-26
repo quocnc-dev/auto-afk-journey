@@ -115,25 +115,46 @@ def findPauseAutoConfirmCancel(bot, screen, originX: int, originY: int, items, f
         return None  # Màn 'Chiến Đấu Tự Động Hoàn Tất' không phải popup tắt auto
     pItem = hit[3]
     imgH, imgW = screen.shape[:2]
+    # 1) OCR thường đọc được luôn chữ 'X' trên nút hủy -> chính xác nhất
+    xItems = [it for it in items if it.normText.strip() in ("x", "×")
+              and pItem.y2 < it.centerY <= pItem.y2 + imgH * 0.30]
+    if xItems:
+        xi = min(xItems, key=lambda it: abs(it.centerX - pItem.centerX))
+        return (xi.centerX, xi.centerY)
+    # 2) Không đọc được 'X': định vị theo nút ✓ xanh lá
     if hasattr(cv2, "findContours") and getattr(screen, "ndim", 0) == 3:
         y1 = max(0, pItem.y2 - originY)
         y2 = min(imgH, y1 + int(imgH * 0.30))
         x1, x2 = int(imgW * 0.25), int(imgW * 0.90)
         if y2 > y1 + 10 and x2 > x1 + 10:
             hsv = cv2.cvtColor(screen[y1:y2, x1:x2], cv2.COLOR_BGR2HSV)
-            low = np.array(config.CHECKBOX_GREEN_HSV_LOW, dtype=np.uint8)
-            high = np.array(config.CHECKBOX_GREEN_HSV_HIGH, dtype=np.uint8)
-            contours, _ = cv2.findContours(cv2.inRange(hsv, low, high), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            # Chỉ nhận nút tròn (gần vuông), bỏ thanh/nhãn màu xanh dài như 'Tiến Trình ...'
-            greenBoxes = [b for b in (cv2.boundingRect(c) for c in contours if cv2.contourArea(c) >= 250)
-                          if 0.6 <= b[2] / max(1, b[3]) <= 1.6]
-            if greenBoxes:
-                gx, gy, gw, gh = max(greenBoxes, key=lambda b: b[2] * b[3])
-                gcx, gcy = gx + gw // 2, gy + gh // 2
+            button = _findGreenRoundButton(hsv, minRadius=imgW * 0.03)
+            if button is not None:
+                gcx, gcy, gw = button
                 estX = gcx - int(gw * config.PAUSE_CANCEL_OFFSET_MULT)
-                cx, cy = _refineCancelGlyph(hsv, estX, gcy, gw, gh) or (estX, gcy)
+                cx, cy = _refineCancelGlyph(hsv, estX, gcy, gw, gw) or (estX, gcy)
                 return (originX + x1 + cx, originY + y1 + cy)
     return (originX + int(imgW * 0.56), originY + int(imgH * 0.66))
+
+
+def _findGreenRoundButton(hsv, minRadius: float) -> tuple[int, int, int] | None:
+    """
+    Tâm và đường kính nút tròn xanh lá lớn nhất = hình tròn lớn nhất nằm gọn trong vùng xanh (distance transform).
+    Không dùng khung bao vì vùng xanh của nền (cây, cỏ) dính vào nút làm khung to ra, tâm lệch (ảnh thật 14:42).
+    """
+    low = np.array(config.CHECKBOX_GREEN_HSV_LOW, dtype=np.uint8)
+    high = np.array(config.CHECKBOX_GREEN_HSV_HIGH, dtype=np.uint8)
+    contours, _ = cv2.findContours(cv2.inRange(hsv, low, high), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    best = None
+    for c in contours:
+        if cv2.contourArea(c) < 250:
+            continue
+        filled = np.zeros(hsv.shape[:2], dtype=np.uint8)
+        cv2.drawContours(filled, [c], -1, 255, thickness=cv2.FILLED)  # lấp dấu ✓ trắng bên trong nút
+        _, radius, _, center = cv2.minMaxLoc(cv2.distanceTransform(filled, cv2.DIST_L2, 5))
+        if radius >= minRadius and (best is None or radius > best[2]):
+            best = (center[0], center[1], radius)
+    return (best[0], best[1], int(round(best[2] * 2))) if best else None
 
 
 def _refineCancelGlyph(hsv, estX: int, estY: int, gw: int, gh: int) -> tuple[int, int] | None:
