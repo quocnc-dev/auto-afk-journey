@@ -138,6 +138,23 @@ class TestModeFallback(unittest.TestCase):
         clicks = self._runWithScenes([copyModalItems])
         self.assertEqual(clicks, [(380, 880)])
 
+    def test_battle_timer_stands_still_and_pause_prompt_clicks_cancel_x(self):
+        timerOnlyBattle = [
+            _ocrItem("88giây", 610, 46, w=70, h=24),
+            _ocrItem("Tự Động", 260, 845, w=90, h=24),
+        ]
+        self.assertEqual(self._runWithScenes([timerOnlyBattle]), [])
+
+        pausePromptItems = [
+            _ocrItem("88giây", 610, 46, w=70, h=24),
+            _ocrItem("Tắt chế độ Chiến Đấu Tự Động?", 338, 440, w=320, h=26),
+            _ocrItem("Tiến Trình AFK trong Mùa Giải Hiện Tại :", 338, 476, w=360, h=22),
+        ]
+        clicks = self._runWithScenes([pausePromptItems])
+        self.assertEqual(len(clicks), 1)
+        self.assertTrue(300 <= clicks[0][0] <= 460)
+        self.assertTrue(500 <= clicks[0][1] <= 750)
+
 
 if __name__ == "__main__":
     unittest.main()

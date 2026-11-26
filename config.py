@@ -44,6 +44,8 @@ CHECKBOX_GREEN_MIN_RATIO = 0.12
 ROI_NEXT_TEAM_AREA = (0.60, 0.20, 0.99, 0.80)
 ROI_AFK_CORNER = (0.55, 0.65, 1.0, 1.0)
 ROI_AFK_CORNER_LEFT = (0.0, 0.78, 0.35, 1.0)
+ROI_BATTLE_TIMER = (0.68, 0.0, 1.0, 0.16)
+ROI_BATTLE_TIMER = (0.70, 0.0, 1.0, 0.16)
 
 # Thông số nhận diện & chờ trạng thái Tự Động Xử Lý ở màn hình chính
 AUTO_PROGRESS_POLL_INTERVAL = 2.5
@@ -65,6 +67,7 @@ OCR_KEYWORDS = {
     "auto_progress": ["tu dong xu ly", "auto progress"],
     "auto_progress_part": ["xu ly"],
     "in_battle_auto": ["tu dong chien dau", "auto battling"],
+    "pause_auto_prompt": ["tat che do chien dau", "tien trinh afk"],
     "main_world_nav": ["ngoi nha huyen bi", "bang hoi", "trang vien", "cam nang mua giai"],
     "challenge_hl": ["huyen linh", "huyen linh sv", "thach dau huyen linh"],
     "fight": ["chien dau", "battle"],
@@ -75,9 +78,9 @@ OCR_KEYWORDS = {
 }
 
 # Từ khóa loại trừ khi tìm nút Chiến Đấu thường và nút Tự Động
-FIGHT_EXCLUDE_KEYS = ["auto_battle", "auto_battle_complete", "challenge_hl", "stats", "in_battle_auto"]
+FIGHT_EXCLUDE_KEYS = ["auto_battle", "auto_battle_complete", "challenge_hl", "stats", "in_battle_auto", "pause_auto_prompt"]
 FIGHT_EXTRA_EXCLUDES = ["cap nhat", "update", "che do"]
-AUTO_BATTLE_EXCLUDE_KEYS = ["auto_battle_complete", "auto_progress", "in_battle_auto"]
+AUTO_BATTLE_EXCLUDE_KEYS = ["auto_battle_complete", "auto_progress", "in_battle_auto", "pause_auto_prompt"]
 AUTO_BATTLE_EXTRA_EXCLUDES = []
 CHALLENGE_HL_EXTRA_EXCLUDES = ["man choi", "dinh cao", "sinh vat", "ngoi nha", "ngoi nha huyen bi"]
 IN_BATTLE_EXTRA_EXCLUDES = ["che do"]

@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 
 import cv2
+import numpy as np
 
 import config
 
@@ -120,9 +121,56 @@ def findAutoProgressState(bot, items, findKeyFn) -> tuple[bool, int, int] | None
     return (False, pItem.centerX, pItem.centerY)
 
 
-def findInBattleAuto(bot, items, findKeyFn):
-    """Nhận diện thanh trạng thái 'Tự Động Chiến Đấu...' khi đang đánh trận để bot đứng đợi."""
-    return findKeyFn(bot, items, "in_battle_auto", extraExcludes=config.IN_BATTLE_EXTRA_EXCLUDES)
+def hasBattleTimer(items, rect: tuple[int, int, int, int] | None) -> bool:
+    """Nhận diện bộ đếm thời gian trận đấu (vd '88giây') ở góc trên phải màn hình."""
+    timerRect = roiToScreenRect(rect, config.ROI_BATTLE_TIMER)
+    for item in items:
+        if timerRect is not None:
+            rx, ry, rw, rh = timerRect
+            if not (rx <= item.centerX <= rx + rw and ry <= item.centerY <= ry + rh):
+                continue
+        cleaned = re.sub(r"[^a-z0-9\s]", "", item.normText).strip()
+        if re.fullmatch(r"\d{1,3}\s*(giay|s)", cleaned):
+            return True
+    return False
+
+
+def findPauseAutoConfirmCancel(bot, screen, originX: int, originY: int, items, findKeyFn) -> tuple[int, int] | None:
+    """Phát hiện popup 'Tắt chế độ Chiến Đấu Tự Động?' và trả về tọa độ nút X để tiếp tục auto."""
+    hit = findKeyFn(bot, items, "pause_auto_prompt")
+    if not hit:
+        return None
+    pItem = hit[3]
+    imgH, imgW = screen.shape[:2]
+    if hasattr(cv2, "findContours") and getattr(screen, "ndim", 0) == 3:
+        y1 = max(0, pItem.y2 - originY)
+        y2 = min(imgH, y1 + int(imgH * 0.30))
+        x1, x2 = int(imgW * 0.25), int(imgW * 0.90)
+        if y2 > y1 + 10 and x2 > x1 + 10:
+            hsv = cv2.cvtColor(screen[y1:y2, x1:x2], cv2.COLOR_BGR2HSV)
+            low = np.array(config.CHECKBOX_GREEN_HSV_LOW, dtype=np.uint8)
+            high = np.array(config.CHECKBOX_GREEN_HSV_HIGH, dtype=np.uint8)
+            contours, _ = cv2.findContours(cv2.inRange(hsv, low, high), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            greenBoxes = [cv2.boundingRect(c) for c in contours if cv2.contourArea(c) >= 250]
+            if greenBoxes:
+                gx, gy, gw, gh = max(greenBoxes, key=lambda b: b[2] * b[3])
+                wMask = ((hsv[:, :, 1] < 45) & (hsv[:, :, 2] > 205)).astype(np.uint8) * 255
+                wContours, _ = cv2.findContours(wMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                for wc in wContours:
+                    if cv2.contourArea(wc) < 200:
+                        continue
+                    wx, wy, ww, wh = cv2.boundingRect(wc)
+                    wcx, wcy = wx + ww // 2, wy + wh // 2
+                    gcx, gcy = gx + gw // 2, gy + gh // 2
+                    if gx - int(gw * 2.5) <= wcx <= gx - int(gw * 0.4) and abs(wcy - gcy) <= gh:
+                        return (originX + x1 + wcx, originY + y1 + wcy)
+                return (originX + x1 + gx + gw // 2 - int(gw * 1.45), originY + y1 + gy + gh // 2)
+    return (originX + int(imgW * 0.56), originY + int(imgH * 0.66))
+
+
+def findInBattleAuto(bot, items, findKeyFn, rect=None):
+    """Nhận diện đang trong trận ('Tự Động Chiến Đấu...' hoặc bộ đếm giây góc trên phải)."""
+    return bool(findKeyFn(bot, items, "in_battle_auto", extraExcludes=config.IN_BATTLE_EXTRA_EXCLUDES)) or hasBattleTimer(items, rect)
 
 
 def isMainOverworldScreen(bot, items, findKeyFn) -> bool:
@@ -158,14 +206,14 @@ def _scanCornerUpscaled(bot, screen, originX: int, originY: int, roi: tuple[floa
     return (originX + x1 + cx // 2, originY + y1 + cy // 2, score, item)
 
 
-def detectPassiveWaitState(bot, items, findKeyFn, autoProgress=None) -> tuple[str, str, bool] | None:
+def detectPassiveWaitState(bot, items, findKeyFn, autoProgress=None, rect=None) -> tuple[str, str, bool] | None:
     """
     Trả về (stateKey, logMessage, keepAlive) nếu bot cần đứng yên chờ
-    ('Tự Động Xử Lý' đang chạy ở sảnh hoặc 'Tự Động Chiến Đấu...' đang đánh trận).
+    ('Tự Động Xử Lý' đang chạy ở sảnh hoặc đang đánh trận).
     """
     if autoProgress is not None and not autoProgress[0]:
         return ("auto_progress_running", "⏳ Đang 'Tự Động Xử Lý' ở màn hình chính — đứng im chờ tới khi thua/xong...", True)
-    if findInBattleAuto(bot, items, findKeyFn):
+    if findInBattleAuto(bot, items, findKeyFn, rect=rect):
         return ("in_battle_auto", "⏳ Đang 'Tự Động Chiến Đấu...' — đứng đợi kết thúc trận...", True)
     return None
 

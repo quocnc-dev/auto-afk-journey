@@ -7,7 +7,10 @@ import time
 import logging
 
 import config
-from modules.afk_detectors import AfkLoopState, detectPassiveWaitState, findAutoProgressState, findMainLobbyEntry, isMainOverworldScreen
+from modules.afk_detectors import (
+    AfkLoopState, detectPassiveWaitState, findAutoProgressState,
+    findMainLobbyEntry, findPauseAutoConfirmCancel, isMainOverworldScreen,
+)
 from ocr_engine import inspectCheckboxByText, findNextTeamArrow
 
 logger = logging.getLogger("AFK_Bot.AutoAFK")
@@ -65,9 +68,7 @@ def _findKey(bot, items, keyName: str, excludeKeys=None, extraExcludes=None, exa
     if excludeKeys:
         for exKey in excludeKeys:
             excludeWords.extend(config.OCR_KEYWORDS.get(exKey, []))
-    return bot.ocr.findText(
-        items, keywords, excludeKeywords=excludeWords or None, exactOnly=exactOnly, wholePhrase=wholePhrase
-    )
+    return bot.ocr.findText(items, keywords, excludeKeywords=excludeWords or None, exactOnly=exactOnly, wholePhrase=wholePhrase)
 
 
 def _handleDefeatSwitchMode(bot, screen, originX: int, originY: int, rect, items, retryHit, preferChallenge: bool) -> bool:
@@ -197,15 +198,21 @@ def run_auto_afk(bot):
             continue
         missingWindowSince = None
 
-        retryHit = _findKey(bot, items, "retry")
+        pauseCancel = findPauseAutoConfirmCancel(bot, screen, originX, originY, items, _findKey)
+        if pauseCancel is not None:
+            st.markProgress("pause_auto_prompt")
+            bot._log("⚠️ Phát hiện hộp thoại 'Tắt chế độ Chiến Đấu Tự Động?'. Bấm X để tiếp tục auto...")
+            _safeClick(bot, pauseCancel[0], pauseCancel[1], rect)
+            _wait(bot, 1.5)
+            continue
+
+        retryHit = _findKey(bot, items, "retry", wholePhrase=True)
         if retryHit:
             st.markProgress("retry")
             fails = st.recordDefeat(fromMainDone=False)
             bot._log(f"❌ Trận đấu THẤT BẠI (Lần thứ {fails}/{FAIL_THRESHOLD_TO_SWITCH_MODE} liên tiếp)!")
             if fails >= FAIL_THRESHOLD_TO_SWITCH_MODE:
-                st.preferChallenge = _handleDefeatSwitchMode(
-                    bot, screen, originX, originY, rect, items, retryHit, st.preferChallenge
-                )
+                st.preferChallenge = _handleDefeatSwitchMode(bot, screen, originX, originY, rect, items, retryHit, st.preferChallenge)
                 st.failedAttempts = 0
                 continue
             bot._log("🖱 Click 'Thử Lại'...")
@@ -238,7 +245,7 @@ def run_auto_afk(bot):
             _wait(bot, 2.5)
             continue
 
-        waitState = detectPassiveWaitState(bot, items, _findKey, autoProgress=autoProgress)
+        waitState = detectPassiveWaitState(bot, items, _findKey, autoProgress=autoProgress, rect=rect)
         if waitState is not None:
             waitKey, waitMsg, keepAlive = waitState
             if st.lastStateKey != waitKey:
@@ -249,10 +256,7 @@ def run_auto_afk(bot):
             continue
 
         if not isMainOverworldScreen(bot, items, _findKey):
-            autoHit = _findKey(
-                bot, items, "auto_battle",
-                excludeKeys=config.AUTO_BATTLE_EXCLUDE_KEYS, extraExcludes=config.AUTO_BATTLE_EXTRA_EXCLUDES, wholePhrase=True,
-            )
+            autoHit = _findKey(bot, items, "auto_battle", excludeKeys=config.AUTO_BATTLE_EXCLUDE_KEYS, extraExcludes=config.AUTO_BATTLE_EXTRA_EXCLUDES, wholePhrase=True)
             if autoHit:
                 st.markProgress("auto_battle")
                 st.onEnterBattle()
