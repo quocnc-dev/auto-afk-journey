@@ -17,6 +17,7 @@ class AfkLoopState:
     # vượt màn thì về 0 (màn mới chép lại từ team #1), thua tiếp trên cùng màn thì sang team #2, #3...
     teamCursor: int = 0
     needTeamChange: bool = False     # Vừa thua -> lần tới vào màn chuẩn bị đấu phải chép team kế tiếp
+    pendingModeExit: int = 0         # Vừa đổi mode do thua: còn N lần thử thoát màn chuẩn bị của mode cũ về sảnh
     lobbyClicksSameMode: int = 0
     preferChallenge: bool = True
     lastStateKey: str | None = None

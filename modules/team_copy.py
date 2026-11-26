@@ -70,7 +70,8 @@ def applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsItem
             if statsScreen is None:
                 return
         else:
-            bot._log("⚠️ Không tìm thấy nút chuyển Team (có thể đã hết danh sách), quay về chép team đầu tiên...")
+            # Bảng Thành tích (đã lọc đội sở hữu) chỉ có 1 đội hoặc đã hết danh sách — không phải lỗi bot
+            bot._log("🔎 Bảng Thành tích không có nút chuyển team (chỉ có 1 đội phù hợp / đã hết danh sách) — chép team #1.")
             targetTeam = 1
 
     copyHit = core._findKey(bot, statsItems, "copy_team")

@@ -151,5 +151,58 @@ class TestTeamChangeOnEveryDefeat(unittest.TestCase):
         st.recordDefeat(fromMainDone=True)
         self.assertEqual((st.teamCursor, st.needTeamChange, st.failedAttempts), (0, True, 1))
 
+
+class TestModeSwitchReachesLobby(unittest.TestCase):
+    """15:28 build 32: thua lần 5 -> bấm 'Quay lại' theo tọa độ bị hụt -> rơi vào màn chuẩn bị Huyền Linh -> đánh tiếp mode cũ."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ocr = OcrEngine()
+
+    def _run(self, scenes):
+        bot = TestDefeatStreak._run(self, scenes)
+        return bot
+
+    def test_stuck_on_old_mode_prep_presses_escape_then_picks_new_mode(self):
+        scenes = ([RETRY, AUTO_BATTLE] * 4) + [RETRY, PREP, LOBBY]
+        bot = self._run(scenes)
+        self.assertEqual(bot.ctrl.escapes, 1)
+        self.assertNotIn(AUTO_CLICK, bot.ctrl.clicks[-2:])  # không bấm 'Chiến Đấu Tự Động' ở mode cũ
+        self.assertEqual(bot.ctrl.clicks[-1], NORMAL)
+        self.assertTrue(any("nhấn ESC để về sảnh" in m for m in bot.logs))
+
+    def test_gives_up_after_attempts_and_saves_snapshot(self):
+        import shutil
+        import tempfile
+        from modules.debug_snapshot import DebugSnapshotter
+        tmp = tempfile.mkdtemp(prefix="afk_mode_")
+        try:
+            scenes = ([RETRY, AUTO_BATTLE] * 4) + [RETRY, PREP, PREP, PREP]
+            frame = np.zeros((934, 676, 3), dtype=np.uint8)
+            bot = MockBot(self.ocr, [frame] * len(scenes))
+            bot.debugSnap = DebugSnapshotter(baseDir=tmp, minInterval=0, enabled=True)
+            queue = list(scenes)
+            origScan, origWait = bot.ocr.scanImage, auto_afk._wait
+            bot.ocr.scanImage = lambda img, originX=0, originY=0, roi=None: queue.pop(0) if queue else []
+            auto_afk._wait = lambda b, s: True
+            try:
+                auto_afk.run_auto_afk(bot)
+            finally:
+                bot.ocr.scanImage, auto_afk._wait = origScan, origWait
+            names = os.listdir(tmp)
+            self.assertTrue(any("mode_switch_defeat_screen" in n for n in names))
+            self.assertTrue(any("mode_exit_prep_screen" in n for n in names))
+            self.assertEqual(bot.ctrl.escapes, 2)
+            self.assertIn(STATS_CLICK, bot.ctrl.clicks)  # hết lượt thử thì quay lại luồng thường (đổi team rồi đánh)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_lobby_mode_switch_does_not_press_escape(self):
+        lost = _complete(_ocrItem("Đã hoàn thành màn x0", 338, 345))
+        bot = self._run(([RETRY, AUTO_BATTLE] * 4) + [lost, LOBBY])
+        self.assertEqual(bot.ctrl.escapes, 0)
+        self.assertEqual(bot.ctrl.clicks[-1], NORMAL)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -151,6 +151,7 @@ SCREEN_RESCAN_INTERVAL = 0.5        # Quét lại khi màn mới load chậm ch�
 PREP_SCREEN_WAIT = 4.0              # Tối đa chờ màn chuẩn bị đấu / bảng Thành tích load (giây)
 TEAM_SWITCH_WAIT = 0.6              # Chờ sau mỗi lần bấm mũi tên đổi team (chỉ đổi ảnh nhỏ)
 SCREEN_CONFIRM_DELAY = 0.4          # Quét lại sau N giây để xác nhận màn Hoàn Tất / nút Đóng không phải chữ thoáng qua
+MODE_EXIT_ATTEMPTS = 2              # Đổi mode mà vẫn kẹt ở màn chuẩn bị của mode cũ: thử ESC tối đa N lần
 STAGE_ENTER_WAIT = 3.0              # Sau khi bấm nút vào trận ở sảnh: chờ nút biến mất (game load chậm) rồi mới tính là bấm hụt
 
 # macOS (game iPad): con trỏ nằm yên trên nút '✕ Tự Động Chiến Đấu' có thể làm game hiện popup tắt auto.

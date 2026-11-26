@@ -13,6 +13,7 @@ from modules.debug_snapshot import saveSnapshot
 from modules.game_actions import describePopupCause, safeClick as _safeClick, safeEscape as _safeEscape
 from modules.game_actions import waitForScreenChange, waitWatchingFocus
 from modules.team_copy import applyStatsModalTeam as _applyStatsModalTeam, handlePickTeamInStats as _handlePickTeamInStats
+from modules.mode_switch import exitOldModePrep, handleDefeatSwitchMode as _handleDefeatSwitchMode
 
 logger = logging.getLogger("AFK_Bot.AutoAFK")
 
@@ -90,25 +91,6 @@ def _confirmStillThere(bot, keyName: str, **findArgs) -> bool:
     return screen is not None and bool(_findKey(bot, items, keyName, **findArgs))
 
 
-def _handleDefeatSwitchMode(bot, screen, originX: int, originY: int, rect, items, retryHit, preferChallenge: bool) -> bool:
-    """Quay về sảnh khi thua đủ mốc và đổi nhánh ưu tiên giữa Huyền Linh và Thường."""
-    newPrefer = not preferChallenge
-    modeName = "Thách Đấu Huyền Linh SV" if newPrefer else "Chiến Đấu Thường"
-    bot._log(f"🔄 Thất bại liên tiếp đạt mốc! Quay về sảnh và đổi mode ưu tiên sang: {modeName}")
-
-    backHit = _findKey(bot, items, "back")
-    if backHit:
-        bot._log("🖱 Click nút 'Back' (OCR)...")
-        clicked = _safeClick(bot, backHit[0], backHit[1], rect)
-    else:
-        retryItem = retryHit[3]
-        backX = max(originX + 10, retryItem.x1 + int(retryItem.height * config.DEFEAT_BACK_HEIGHT_MULT))
-        bot._log(f"🖱 Click tọa độ nút Back tương đối ({backX}, {retryHit[1]})...")
-        clicked = _safeClick(bot, backX, retryHit[1], rect)
-    _settle(bot, screen, 2.5) if clicked else _wait(bot, 1.0)
-    return newPrefer
-
-
 def _tryClickStageOption(bot, screen, items, rect, preferChallenge: bool) -> bool:
     """Thử vào trận ở sảnh AFK theo thứ tự ưu tiên."""
     fightArgs = ("fight", "Chiến Đấu thường", config.FIGHT_EXCLUDE_KEYS, config.FIGHT_EXTRA_EXCLUDES, True)
@@ -178,6 +160,7 @@ def run_auto_afk(bot):
             if fails >= FAIL_THRESHOLD_TO_SWITCH_MODE:
                 st.preferChallenge = _handleDefeatSwitchMode(bot, screen, originX, originY, rect, items, retryHit, st.preferChallenge)
                 st.onModeSwitched()
+                st.pendingModeExit = config.MODE_EXIT_ATTEMPTS  # Nếu chưa về được sảnh thì thoát khỏi màn chuẩn bị của mode cũ
                 continue
             bot._log("🖱 Click 'Thử Lại'...")
             if _safeClick(bot, retryHit[0], retryHit[1], rect) and _settle(bot, screen, 2.5):
@@ -237,8 +220,11 @@ def run_auto_afk(bot):
 
         isMainScreen = isMainOverworldScreen(bot, items, _findKey)
         if not isMainScreen:
-            statsHit = _findKey(bot, items, "stats") if st.needTeamChange else None
-            if statsHit:
+            statsHit = _findKey(bot, items, "stats")
+            if statsHit and st.pendingModeExit:
+                exitOldModePrep(bot, st, screen, items, rect)
+                continue
+            if statsHit and st.needTeamChange:
                 # Thua kiểu 'Hoàn Tất' / 'Xong!' -> về chọn chế độ rồi vào lại: đổi team trước khi đánh
                 bot._log("🔁 Vừa thua — chép team kế tiếp trước khi vào trận...")
                 _handlePickTeamInStats(bot, st, prepFrame=(screen, rect, items, statsHit))
@@ -253,6 +239,7 @@ def run_auto_afk(bot):
 
             st.resolveLobbySwitch(bot, FAIL_THRESHOLD_TO_SWITCH_MODE)
             if _tryClickStageOption(bot, screen, items, rect, st.preferChallenge):
+                st.pendingModeExit = 0  # Đã ở sảnh chọn chế độ
                 st.defeatCounted = False
                 st.lobbyClicksSameMode += 1
                 st.markProgress("stage_option")
