@@ -162,7 +162,7 @@ def detectPassiveWaitState(bot, items, findKeyFn, autoProgress=None) -> tuple[st
     if autoProgress is not None and not autoProgress[0]:
         return ("auto_progress_running", "⏳ Đang 'Tự Động Xử Lý' ở màn hình chính — đứng im chờ tới khi thua/xong...", True)
     if findInBattleAuto(bot, items, findKeyFn):
-        return ("in_battle_auto", "⏳ Đang 'Tự Động Chiến Đấu...' — đứng đợi kết thúc trận...", False)
+        return ("in_battle_auto", "⏳ Đang 'Tự Động Chiến Đấu...' — đứng đợi kết thúc trận...", True)
     return None
 
 

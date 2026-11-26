@@ -247,9 +247,11 @@ class TestOcrAndLogic(unittest.TestCase):
             self._ocrItem("75giây", 610, 46, w=70, h=24),
             self._ocrItem("Tự Động Chiến Đấu...", 338, 845, w=220, h=24),
         ]
-        bot = MockBot(self.ocr, [frame, frame])
-        origScan, origWait = bot.ocr.scanImage, auto_afk._wait
+        bot = MockBot(self.ocr, [frame, frame, frame])
+        fakeNow = [0.0]
+        origScan, origTime, origWait = bot.ocr.scanImage, auto_afk.time.time, auto_afk._wait
         bot.ocr.scanImage = lambda img, originX=0, originY=0, roi=None: battleItems
+        auto_afk.time.time = lambda: (fakeNow.__setitem__(0, fakeNow[0] + 900.0) or fakeNow[0])
         auto_afk._wait = lambda b, s: True
         try:
             self.assertIsNone(
@@ -263,7 +265,7 @@ class TestOcrAndLogic(unittest.TestCase):
             )
             ok = auto_afk.run_auto_afk(bot)
         finally:
-            bot.ocr.scanImage, auto_afk._wait = origScan, origWait
+            bot.ocr.scanImage, auto_afk.time.time, auto_afk._wait = origScan, origTime, origWait
 
         self.assertTrue(ok)
         self.assertEqual(bot.ctrl.clicks, [])
