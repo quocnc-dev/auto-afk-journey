@@ -35,17 +35,32 @@ def safeEscape(bot) -> bool:
     return (res is not False) and not bot._stop_event.is_set()
 
 
-def frameDiff(a, b) -> float:
-    """Độ khác trung bình (0..255) giữa 2 khung hình, thu nhỏ + làm mờ để bỏ qua nhiễu nhỏ."""
-    if a is None or b is None:
-        return 255.0
+def _diffMap(a, b) -> np.ndarray:
+    """Bản đồ độ lệch tuyệt đối (0..255) giữa 2 khung hình đã thu nhỏ + làm mờ để bỏ qua nhiễu nhỏ."""
     size = (config.SCREEN_DIFF_SIZE, config.SCREEN_DIFF_SIZE)
 
     def prep(img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if getattr(img, "ndim", 0) == 3 else img
         return cv2.GaussianBlur(cv2.resize(gray, size, interpolation=cv2.INTER_AREA), (3, 3), 0).astype(np.int16)
 
-    return float(np.mean(np.abs(prep(a) - prep(b))))
+    return np.abs(prep(a) - prep(b))
+
+
+def frameDiff(a, b) -> float:
+    """Độ khác trung bình (0..255) giữa 2 khung hình."""
+    if a is None or b is None:
+        return 255.0
+    return float(np.mean(_diffMap(a, b)))
+
+
+def hasScreenChanged(a, b) -> bool:
+    """Đã chuyển màn: lệch trung bình lớn, hoặc một vùng nhỏ đổi rõ (popup / nút / ảnh team)."""
+    if a is None or b is None:
+        return True
+    diff = _diffMap(a, b)
+    if float(np.mean(diff)) >= config.SCREEN_CHANGE_THRESHOLD:
+        return True
+    return float(np.mean(diff > config.SCREEN_LOCAL_PIXEL_DIFF)) >= config.SCREEN_LOCAL_CHANGE_RATIO
 
 
 def waitForScreenChange(bot, prevScreen, maxWait: float, waitFn) -> bool:
@@ -67,7 +82,7 @@ def waitForScreenChange(bot, prevScreen, maxWait: float, waitFn) -> bool:
         if cur is None:
             return not bot._stop_event.is_set()  # mất cửa sổ: để vòng lặp chính xử lý
         if not changed:
-            changed = frameDiff(cur, prevScreen) >= config.SCREEN_CHANGE_THRESHOLD
+            changed = hasScreenChanged(prevScreen, cur)
         elif last is not None and frameDiff(cur, last) < config.SCREEN_STABLE_THRESHOLD:
             return True
         last = cur

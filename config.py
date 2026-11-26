@@ -137,12 +137,17 @@ DEBUG_RECENT_LOG_LINES = 150        # Số dòng log gần nhất đính kèm tr
 # ========================
 #  DELAY (giây)
 # ========================
-DELAY_AFTER_CLICK = 0.5
+DELAY_AFTER_CLICK = 0.15            # Nghỉ ngắn sau click; phần chờ màn hình đổi do SCREEN_* bên dưới đảm nhiệm
 
 # Chờ màn hình đổi sau click (so sánh khung hình thu nhỏ, không chạy OCR)
 SCREEN_DIFF_SIZE = 96               # Thu nhỏ khung hình về NxN pixel trước khi so
 SCREEN_CHANGE_THRESHOLD = 6.0       # Độ khác trung bình (0..255) coi là đã chuyển màn
 SCREEN_STABLE_THRESHOLD = 2.0       # Dưới mức này giữa 2 lần chụp liên tiếp coi là đã đứng yên
+SCREEN_LOCAL_PIXEL_DIFF = 30        # Pixel lệch hơn mức này (0..255) coi là pixel đã đổi
+SCREEN_LOCAL_CHANGE_RATIO = 0.01    # >=1% pixel đổi cũng tính là đã chuyển màn (popup/nút nhỏ hiện ra)
+SCREEN_RESCAN_INTERVAL = 0.5        # Quét lại khi màn mới load chậm chưa có nút cần tìm
+PREP_SCREEN_WAIT = 4.0              # Tối đa chờ màn chuẩn bị đấu / bảng Thành tích load (giây)
+TEAM_SWITCH_WAIT = 0.6              # Chờ sau mỗi lần bấm mũi tên đổi team (chỉ đổi ảnh nhỏ)
 SCREEN_SETTLE_MIN_WAIT = 0.4        # Chờ tối thiểu trước khi bắt đầu so khung hình
 SCREEN_SETTLE_POLL = 0.3
 

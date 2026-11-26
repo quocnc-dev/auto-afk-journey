@@ -11,12 +11,13 @@ from modules.afk_detectors import (
 from modules.debug_snapshot import saveSnapshot
 from modules.game_actions import describePopupCause, safeClick as _safeClick, safeEscape as _safeEscape
 from modules.game_actions import waitForScreenChange, waitWatchingFocus
-from ocr_engine import inspectCheckboxByText, findNextTeamArrow
+from modules.team_copy import applyStatsModalTeam as _applyStatsModalTeam, handlePickTeamInStats as _handlePickTeamInStats
 
 logger = logging.getLogger("AFK_Bot.AutoAFK")
 
 FAIL_THRESHOLD_TO_SWITCH_MODE = 5
 NO_ACTION_LIMIT_SECONDS = 1200
+PASSIVE_WAIT_KEYS = ("auto_progress_running", "in_battle_auto")
 
 
 def _wait(bot, seconds: float) -> bool:
@@ -81,67 +82,6 @@ def _handleDefeatSwitchMode(bot, screen, originX: int, originY: int, rect, items
         clicked = _safeClick(bot, backX, retryHit[1], rect)
     _settle(bot, screen, 2.5) if clicked else _wait(bot, 1.0)
     return newPrefer
-
-
-def _applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsItems, st: AfkLoopState | None = None, failedAttempts: int = 1):
-    """Bật lọc đội hình đã sở hữu, chuyển sang team kế tiếp (nếu cần) và bấm Sao chép."""
-    ownedHit = _findKey(bot, statsItems, "owned_team")
-    if ownedHit:
-        isChecked, cbX, cbY = inspectCheckboxByText(statsScreen, ownedHit[3], ox, oy)
-        if not isChecked:
-            bot._log("🖱 Tích chọn ô 'Chỉ hiển thị đội hình đã sở hữu'...")
-            if not _safeClick(bot, cbX, cbY, statsRect) or not _settle(bot, statsScreen, 1.0):
-                return
-            statsScreen, ox, oy, statsRect, statsItems = _scanGame(bot)
-            if statsScreen is None:
-                return
-
-    attempts = st.failedAttempts if st is not None else failedAttempts
-    teamMoves = max(0, attempts - 1)
-    alreadySwitched = st.teamSwitchedInStats if st is not None else False
-    if teamMoves > 0 and not alreadySwitched:
-        nextArrow = findNextTeamArrow(statsScreen, ox, oy)
-        if nextArrow:
-            bot._log(f"🖱 Click chuyển sang Team tiếp theo ({teamMoves} lần)...")
-            for _ in range(teamMoves):
-                if not _safeClick(bot, nextArrow[0], nextArrow[1], statsRect) or not _settle(bot, statsScreen, 0.8):
-                    return
-            if st is not None:
-                st.teamSwitchedInStats = True
-            statsScreen, ox, oy, statsRect, statsItems = _scanGame(bot)
-            if statsScreen is None:
-                return
-        else:
-            bot._log("⚠️ Không tìm thấy nút chuyển Team, sao chép đội hình đang hiển thị...")
-
-    copyHit = _findKey(bot, statsItems, "copy_team")
-    if copyHit:
-        bot._log("🖱 Click 'Sao chép' đội hình...")
-        clicked = _safeClick(bot, copyHit[0], copyHit[1], statsRect)
-        if st is not None:
-            st.teamSwitchedInStats = False
-        _settle(bot, statsScreen, 2.0) if clicked else _wait(bot, 1.0)
-    else:
-        bot._log("⚠️ Không tìm thấy nút 'Sao chép', nhấn ESC.")
-        _safeEscape(bot)
-        _wait(bot, 1.0)
-
-
-def _handlePickTeamInStats(bot, st: AfkLoopState):
-    """Mở bảng Thành Tích từ màn chuẩn bị đấu và chọn sao chép đội hình."""
-    prepScreen, _, _, prepRect, prepItems = _scanGame(bot)
-    if prepScreen is None:
-        return
-    statsHit = _findKey(bot, prepItems, "stats")
-    if not statsHit:
-        bot._log("⚠️ Không tìm thấy nút 'Thành tích' ở màn hình chuẩn bị đấu.")
-        return
-    bot._log("🖱 Click 'Thành tích'...")
-    if not _safeClick(bot, statsHit[0], statsHit[1], prepRect) or not _settle(bot, prepScreen, 2.0):
-        return
-    statsScreen, ox, oy, statsRect, statsItems = _scanGame(bot)
-    if statsScreen is not None:
-        _applyStatsModalTeam(bot, statsScreen, ox, oy, statsRect, statsItems, st=st)
 
 
 def _tryClickStageOption(bot, screen, items, rect, preferChallenge: bool) -> bool:
@@ -246,7 +186,7 @@ def run_auto_afk(bot):
         waitState = detectPassiveWaitState(bot, items, _findKey, autoProgress=autoProgress, rect=rect)
         if waitState is not None:
             waitKey, waitMsg, keepAlive = waitState
-            if st.lastStateKey != waitKey:
+            if st.lastStateKey not in PASSIVE_WAIT_KEYS:  # 2 trạng thái chờ xen kẽ trong trận -> chỉ log lúc bắt đầu chờ
                 bot._log(waitMsg)
             st.markProgress(waitKey, refreshAlways=keepAlive)
             st.onEnterBattle()
