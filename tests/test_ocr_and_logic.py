@@ -246,6 +246,34 @@ class TestOcrAndLogic(unittest.TestCase):
         finally:
             bot.ocr.scanImage = origScan
 
+    def test_in_battle_auto_stands_still_and_ignores_top_banner(self):
+        frame = np.zeros((934, 676, 3), dtype=np.uint8)
+        battleItems = [
+            self._ocrItem("Màn Chơi Đỉnh Cao Huyễn Linh Sinh Vật", 338, 42, w=320, h=22),
+            self._ocrItem("75giây", 610, 46, w=70, h=24),
+            self._ocrItem("Tự Động Chiến Đấu...", 338, 845, w=220, h=24),
+        ]
+        bot = MockBot(self.ocr, [frame, frame])
+        origScan, origWait = bot.ocr.scanImage, auto_afk._wait
+        bot.ocr.scanImage = lambda img, originX=0, originY=0, roi=None: battleItems
+        auto_afk._wait = lambda b, s: True
+        try:
+            self.assertIsNone(
+                auto_afk._findKey(
+                    bot, battleItems, "auto_battle",
+                    excludeKeys=config.AUTO_BATTLE_EXCLUDE_KEYS, extraExcludes=config.AUTO_BATTLE_EXTRA_EXCLUDES,
+                )
+            )
+            self.assertIsNone(
+                auto_afk._findKey(bot, battleItems, "challenge_hl", extraExcludes=config.CHALLENGE_HL_EXTRA_EXCLUDES)
+            )
+            ok = auto_afk.run_auto_afk(bot)
+        finally:
+            bot.ocr.scanImage, auto_afk._wait = origScan, origWait
+
+        self.assertTrue(ok)
+        self.assertEqual(bot.ctrl.clicks, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -71,6 +71,7 @@ OCR_KEYWORDS = {
     "auto_battle": ["tu dong", "tudong", "auto battle"],
     "auto_progress": ["tu dong xu ly", "auto progress"],
     "auto_progress_part": ["xu ly"],
+    "in_battle_auto": ["tu dong chien dau", "auto battling"],
     "challenge_hl": ["huyen linh", "huyen linh sv", "thach dau huyen linh"],
     "fight": ["chien dau", "battle"],
     "afk_icon": ["afk"],
@@ -80,12 +81,13 @@ OCR_KEYWORDS = {
 }
 
 # Từ khóa loại trừ khi tìm nút Chiến Đấu thường và nút Tự Động
-FIGHT_EXCLUDE_KEYS = ["auto_battle", "auto_battle_complete", "challenge_hl", "stats"]
+FIGHT_EXCLUDE_KEYS = ["auto_battle", "auto_battle_complete", "challenge_hl", "stats", "in_battle_auto"]
 # FIGHT_EXTRA_EXCLUDES = ["cap nhat", "update"]
 FIGHT_EXTRA_EXCLUDES = ["cap nhat", "update", "che do"]
-AUTO_BATTLE_EXCLUDE_KEYS = ["auto_battle_complete", "auto_progress"]
+AUTO_BATTLE_EXCLUDE_KEYS = ["auto_battle_complete", "auto_progress", "in_battle_auto"]
 # AUTO_BATTLE_EXTRA_EXCLUDES = ["xu ly", "xong"]  # "xong" khop mo 0.75 voi "dong" trong "Tu Dong"
 AUTO_BATTLE_EXTRA_EXCLUDES = []
+CHALLENGE_HL_EXTRA_EXCLUDES = ["man choi", "dinh cao", "sinh vat"]
 
 # Tỷ lệ dịch chuyển tương đối (theo kích thước cửa sổ hoặc chiều cao chữ)
 DEFEAT_BACK_OFFSET_X_RATIO = -0.18

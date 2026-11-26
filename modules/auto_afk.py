@@ -7,7 +7,7 @@ import time
 import logging
 
 import config
-from modules.afk_detectors import findAutoProgressState, findMainLobbyEntry
+from modules.afk_detectors import detectPassiveWaitState, findAutoProgressState, findMainLobbyEntry
 from ocr_engine import inspectCheckboxByText, findNextTeamArrow
 
 logger = logging.getLogger("AFK_Bot.AutoAFK")
@@ -157,7 +157,7 @@ def _handlePickTeamInStats(bot, failedAttempts: int):
 def _tryClickStageOption(bot, items, rect, preferChallenge: bool) -> bool:
     """Thử vào trận ở sảnh AFK theo thứ tự ưu tiên."""
     fightArgs = ("fight", "Chiến Đấu thường", config.FIGHT_EXCLUDE_KEYS, config.FIGHT_EXTRA_EXCLUDES, True)
-    challengeArgs = ("challenge_hl", "Thách Đấu Huyền Linh SV", None, None, False)
+    challengeArgs = ("challenge_hl", "Thách Đấu Huyền Linh SV", None, config.CHALLENGE_HL_EXTRA_EXCLUDES, False)
     order = [challengeArgs, fightArgs] if preferChallenge else [fightArgs, challengeArgs]
 
     for keyName, label, excludeKeys, extraExcludes, wholePhrase in order:
@@ -227,7 +227,7 @@ def run_auto_afk(bot):
                 _handlePickTeamInStats(bot, failedAttempts)
             continue
 
-        finishHit = _findKey(bot, items, "auto_battle_complete", extraExcludes=config.FIGHT_EXTRA_EXCLUDES)
+        finishHit = _findKey(bot, items, "auto_battle_complete", excludeKeys=["in_battle_auto"], extraExcludes=config.FIGHT_EXTRA_EXCLUDES)
         if finishHit:
             bot._log("🎉 Phát hiện 'Chiến Đấu Tự Động Hoàn Tất'. Click đóng...")
             _safeClick(bot, finishHit[0], finishHit[1], rect)
@@ -238,25 +238,25 @@ def run_auto_afk(bot):
             continue
 
         autoProgress = findAutoProgressState(bot, items, _findKey)
-        if autoProgress is not None:
-            isDone, px, py = autoProgress
-            if isDone:
-                lastStateKey, lastProgressTime = _markProgress("auto_progress_done", lastStateKey, lastProgressTime)
-                bot._log("❌ Phát hiện 'Tự Động Xử Lý Xong!' ở màn hình chính. Click vào chạy lại...")
-                _safeClick(bot, px, py, rect)
-                _wait(bot, 2.5)
-            else:
-                if lastStateKey != "auto_progress_running":
-                    bot._log("⏳ Đang 'Tự Động Xử Lý' ở màn hình chính — đứng im chờ tới khi thua/xong...")
-                    lastStateKey = "auto_progress_running"
-                lastProgressTime = time.time()
-                _wait(bot, config.AUTO_PROGRESS_POLL_INTERVAL)
+        if autoProgress is not None and autoProgress[0]:
+            lastStateKey, lastProgressTime = _markProgress("auto_progress_done", lastStateKey, lastProgressTime)
+            bot._log("❌ Phát hiện 'Tự Động Xử Lý Xong!' ở màn hình chính. Click vào chạy lại...")
+            _safeClick(bot, autoProgress[1], autoProgress[2], rect)
+            _wait(bot, 2.5)
             continue
 
-        autoHit = _findKey(
-            bot, items, "auto_battle",
-            excludeKeys=config.AUTO_BATTLE_EXCLUDE_KEYS, extraExcludes=config.AUTO_BATTLE_EXTRA_EXCLUDES,
-        )
+        waitState = detectPassiveWaitState(bot, items, _findKey, autoProgress=autoProgress)
+        if waitState is not None:
+            waitKey, waitMsg, keepAlive = waitState
+            if lastStateKey != waitKey:
+                bot._log(waitMsg)
+            lastStateKey, lastProgressTime = _markProgress(waitKey, lastStateKey, lastProgressTime)
+            if keepAlive:
+                lastProgressTime = time.time()
+            _wait(bot, config.AUTO_PROGRESS_POLL_INTERVAL)
+            continue
+
+        autoHit = _findKey(bot, items, "auto_battle", excludeKeys=config.AUTO_BATTLE_EXCLUDE_KEYS, extraExcludes=config.AUTO_BATTLE_EXTRA_EXCLUDES)
         if autoHit:
             lastStateKey, lastProgressTime = _markProgress("auto_battle", lastStateKey, lastProgressTime)
             bot._log("🖱 Click 'Chiến Đấu Tự Động'...")
@@ -279,10 +279,7 @@ def run_auto_afk(bot):
             _wait(bot, 3.0)
             continue
 
-        # afkHit = _findKey(bot, items, "afk_icon", excludeKeys=["victory", "auto_battle_complete"], exactOnly=True)
-        # if not afkHit:
-        #     cornerItems = bot.ocr.scanImage(screen, originX=originX, originY=originY, roi=config.ROI_AFK_CORNER)
-        #     afkHit = _findKey(bot, cornerItems, "afk_icon", excludeKeys=["victory", "auto_battle_complete"], exactOnly=True)
+        # Logic cũ quét góc afk_icon đã chuyển sang findMainLobbyEntry (modules/afk_detectors.py)
         afkHit = findMainLobbyEntry(bot, screen, originX, originY, rect, items, _findKey)
         if afkHit:
             lastStateKey, lastProgressTime = _markProgress("afk_icon", lastStateKey, lastProgressTime)

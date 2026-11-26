@@ -64,6 +64,23 @@ def findAutoProgressState(bot, items, findKeyFn) -> tuple[bool, int, int] | None
     return (False, pItem.centerX, pItem.centerY)
 
 
+def findInBattleAuto(bot, items, findKeyFn):
+    """Nhận diện thanh trạng thái 'Tự Động Chiến Đấu...' khi đang đánh trận để bot đứng đợi."""
+    return findKeyFn(bot, items, "in_battle_auto")
+
+
+def detectPassiveWaitState(bot, items, findKeyFn, autoProgress=None) -> tuple[str, str, bool] | None:
+    """
+    Trả về (stateKey, logMessage, keepAlive) nếu bot cần đứng yên chờ
+    ('Tự Động Xử Lý' đang chạy ở sảnh hoặc 'Tự Động Chiến Đấu...' đang đánh trận).
+    """
+    if autoProgress is not None and not autoProgress[0]:
+        return ("auto_progress_running", "⏳ Đang 'Tự Động Xử Lý' ở màn hình chính — đứng im chờ tới khi thua/xong...", True)
+    if findInBattleAuto(bot, items, findKeyFn):
+        return ("in_battle_auto", "⏳ Đang 'Tự Động Chiến Đấu...' — đứng đợi kết thúc trận...", False)
+    return None
+
+
 def findMainLobbyEntry(bot, screen, originX: int, originY: int, rect, items, findKeyFn):
     """Tìm nút vào AFK ở sảnh chính ('AFK' hoặc 'Màn Chơi Đỉnh Cao' ở góc dưới)."""
     exclude = ["victory", "auto_battle_complete"]
