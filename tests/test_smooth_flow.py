@@ -99,6 +99,84 @@ class TestSlowPrepScreen(unittest.TestCase):
         self.assertFalse(any("không đổi" in m for m in bot.logs))
 
 
+class TestStageEnterAndCursorPark(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ocr = OcrEngine()
+
+    def test_slow_stage_load_does_not_trigger_false_fallback(self):
+        lobbyBoth = [_ocrItem("Thách Đấu Huyền Linh SV", 180, 800), _ocrItem("Chiến Đấu", 510, 800)]
+        prep = [_ocrItem("Thành Tích", 125, 900, w=80, h=22), _ocrItem("Chiến Đấu Tự Động", 285, 892, w=180, h=28)]
+        # Bấm Huyền Linh -> game vẫn hiện sảnh 1 nhịp (load chậm) -> rồi mới vào màn chuẩn bị
+        bot, _, _ = _runScenes(self.ocr, [lobbyBoth, lobbyBoth, prep, prep], auto_afk.run_auto_afk, peek=True)
+        self.assertEqual(bot.ctrl.clicks[:2], [(180, 800), (285, 892)])
+        self.assertNotIn((510, 800), bot.ctrl.clicks)
+        self.assertFalse(any("fallback" in m for m in bot.logs))
+
+    def test_cursor_parks_on_titlebar_after_click(self):
+        moves = []
+        bot = MockBot(self.ocr, [])
+        bot.ctrl.move_to = lambda x, y: moves.append((x, y)) or True
+        orig = config.CURSOR_PARK_AFTER_CLICK
+        config.CURSOR_PARK_AFTER_CLICK = True
+        try:
+            from modules.game_actions import safeClick
+            self.assertTrue(safeClick(bot, 300, 800, (1001, 30, 678, 936)))
+        finally:
+            config.CURSOR_PARK_AFTER_CLICK = orig
+        self.assertEqual(bot.ctrl.clicks, [(300, 800)])
+        self.assertEqual(moves, [(1001 + 339, 30 + config.CURSOR_PARK_TITLEBAR_OFFSET)])
+
+    def test_no_park_when_disabled_or_click_refused(self):
+        moves = []
+        bot = MockBot(self.ocr, [])
+        bot.ctrl.move_to = lambda x, y: moves.append((x, y)) or True
+        bot.canInteractAt = lambda x, y, expectedRect=None: False
+        orig = config.CURSOR_PARK_AFTER_CLICK
+        config.CURSOR_PARK_AFTER_CLICK = True
+        try:
+            from modules.game_actions import safeClick
+            self.assertFalse(safeClick(bot, 300, 800, (1001, 30, 678, 936)))
+        finally:
+            config.CURSOR_PARK_AFTER_CLICK = orig
+        self.assertEqual(moves, [])
+
+
+class TestNoFalseFinishInBattle(unittest.TestCase):
+    """14:18:41 build 29: chữ kỹ năng trong trận khớp nhầm 'Hoàn Tất' -> bot click giữa sân đấu -> hiện popup tắt auto."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ocr = OcrEngine()
+
+    def test_skill_texts_do_not_match_finish(self):
+        bot = MockBot(self.ocr, [])
+        bot._scanRect = (1000, 30, 678, 936)
+        for raw in ["Tự Động Hồi Phục", "Tự Động Hoán Đổi", "Tự động hóa"]:
+            run = [_ocrItem(raw, 1413, 313)]
+            bot2, _, _ = _runScenes(self.ocr, [run], auto_afk.run_auto_afk)
+            self.assertEqual(bot2.ctrl.clicks, [], raw)
+
+    def test_real_finish_text_still_matches(self):
+        scene = [_ocrItem("Chien Dau Tur Dong Hoan Tat", 338, 287, w=440, h=40)]
+        bot, _, _ = _runScenes(self.ocr, [scene], auto_afk.run_auto_afk)
+        self.assertEqual(bot.ctrl.clicks, [(338, 287)])
+
+    def test_no_close_or_finish_click_while_battle_timer_visible(self):
+        scene = [_ocrItem("71giây", 610, 46, w=70, h=24), _ocrItem("Chiến Đấu Tự Động Hoàn Tất", 338, 287, w=440, h=40)]
+        bot, _, _ = _runScenes(self.ocr, [scene], auto_afk.run_auto_afk)
+        self.assertEqual(bot.ctrl.clicks, [])
+
+    def test_transient_finish_text_is_confirmed_before_click(self):
+        flash = [_ocrItem("Chiến Đấu Tự Động Hoàn Tất", 338, 287, w=440, h=40)]
+        gone = [_ocrItem("Tự Động Chiến Đấu...", 338, 845, w=220, h=24)]
+        bot, _, _ = _runScenes(self.ocr, [flash, gone, gone], auto_afk.run_auto_afk, peek=True)
+        self.assertEqual(bot.ctrl.clicks, [])
+        bot, _, _ = _runScenes(self.ocr, [flash, flash], auto_afk.run_auto_afk, peek=True)
+        self.assertEqual(bot.ctrl.clicks, [(338, 287)])
+
+
 class TestQuietBattleWait(unittest.TestCase):
 
     @classmethod

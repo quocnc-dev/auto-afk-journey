@@ -41,8 +41,15 @@ class TestPopupDiagnosis(unittest.TestCase):
         st = AfkLoopState()
         st.lastFocusLossTime = 118.0
         msg = describePopupCause(self._bot((100.0, 1307, 902), (1308, 903)), st, 123.0)
-        self.assertIn("vẫn ở chỗ bot click cuối", msg)
+        self.assertIn("vẫn ở chỗ bot đặt cuối cùng", msg)
         self.assertIn("mất focus lần cuối 5s trước", msg)
+
+    def test_parked_cursor_is_not_user_movement(self):
+        bot = self._bot((100.0, 1307, 902), (1340, 42))
+        bot.ctrl.lastBotCursor = (1340, 42)  # bot đã tự đỗ chuột lên thanh tiêu đề
+        msg = describePopupCause(bot, AfkLoopState(), 123.0)
+        self.assertIn("vẫn ở chỗ bot đặt cuối cùng", msg)
+        self.assertNotIn("KHÔNG phải do bot", msg)
 
     def test_no_click_yet(self):
         msg = describePopupCause(self._bot(None, (1, 1)), AfkLoopState(), 10.0)

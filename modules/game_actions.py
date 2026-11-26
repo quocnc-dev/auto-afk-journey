@@ -20,7 +20,18 @@ def safeClick(bot, x: int, y: int, expectedRect=None) -> bool:
         bot._log("⚠️ Cửa sổ game đã bị che, dịch chuyển hoặc mất focus — hủy click!")
         return False
     res = bot.ctrl.click(x, y, stop_event=bot._stop_event, guard_fn=guardFn)
+    if res is not False:
+        parkCursor(bot, expectedRect or getattr(bot, "_scanRect", None))
     return (res is not False) and not bot._stop_event.is_set()
+
+
+def parkCursor(bot, rect) -> None:
+    """Đưa chuột lên thanh tiêu đề cửa sổ game sau click để con trỏ không nằm yên trên nút trong game."""
+    moveTo = getattr(bot.ctrl, "move_to", None)
+    if not config.CURSOR_PARK_AFTER_CLICK or moveTo is None or not rect:
+        return
+    left, top, width, _ = rect
+    moveTo(left + width // 2, top + config.CURSOR_PARK_TITLEBAR_OFFSET)
 
 
 def safeEscape(bot) -> bool:
@@ -121,10 +132,11 @@ def describePopupCause(bot, st, now: float) -> str:
         parts.append("bot chưa click lần nào")
     cursorFn = getattr(bot.ctrl, "cursorPos", None)
     cursor = cursorFn() if cursorFn else None
-    if cursor and lastClick:
-        moved = abs(cursor[0] - lastClick[1]) > 3 or abs(cursor[1] - lastClick[2]) > 3
+    botCursor = getattr(bot.ctrl, "lastBotCursor", None) or (lastClick[1:] if lastClick else None)
+    if cursor and botCursor:
+        moved = abs(cursor[0] - botCursor[0]) > 3 or abs(cursor[1] - botCursor[1]) > 3
         parts.append(f"chuột đang ở ({cursor[0]}, {cursor[1]})"
-                     + (" — đã bị di chuyển, KHÔNG phải do bot" if moved else " — vẫn ở chỗ bot click cuối"))
+                     + (" — đã bị di chuyển, KHÔNG phải do bot" if moved else " — vẫn ở chỗ bot đặt cuối cùng"))
     if st.lastFocusLossTime is not None:
         parts.append(f"game mất focus lần cuối {now - st.lastFocusLossTime:.0f}s trước")
     else:

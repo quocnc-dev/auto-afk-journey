@@ -68,6 +68,28 @@ class AfkLoopState:
         return self.preferChallenge
 
 
+_OCR_DIGIT_FIX = str.maketrans({"l": "1", "i": "1", "|": "1", "o": "0"})
+
+
+def parseStagesCleared(items) -> int | None:
+    """
+    Đọc số màn auto đã vượt trên màn 'Chiến Đấu Tự Động Hoàn Tất':
+    'Đã hoàn thành màn x1' (OCR hay đọc 1 thành 'l') hoặc 'Tiến Trình ... 846 >> 847'.
+    Trả về None nếu không đọc được.
+    """
+    for item in items:
+        m = re.search(r"hoan thanh man\s*x\s*([0-9ilo|]+)", item.normText)
+        if m:
+            digits = m.group(1).translate(_OCR_DIGIT_FIX)
+            if digits.isdigit():
+                return int(digits)
+    for item in items:
+        m = re.search(r"tien trinh.*?(\d+)\s*>+\s*(\d+)", item.normText)
+        if m:
+            return max(0, int(m.group(2)) - int(m.group(1)))
+    return None
+
+
 def _hasDoneWord(item) -> bool:
     """Kiểm tra có từ 'xong' độc lập (tránh khớp nhầm 'không', 'trong'...)."""
     cleaned = re.sub(r"[^a-z\s]", " ", item.normText)

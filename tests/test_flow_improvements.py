@@ -254,7 +254,7 @@ class TestAutoBattleCompleteRealScreen(unittest.TestCase):
         self.assertFalse(any("Tắt chế độ" in m for m in bot.logs))
 
     def test_refused_click_does_not_log_no_change(self):
-        bot = MockBot(self.ocr, [self.img])
+        bot = MockBot(self.ocr, [self.img, self.img])  # khung 2 cho bước quét xác nhận màn Hoàn Tất
         bot.canInteractAt = lambda x, y, expectedRect=None: False
         bot.peekScreen = lambda: self.img
         origWait = auto_afk._wait

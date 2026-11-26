@@ -1,12 +1,13 @@
 """Module tự động vượt ải Auto AFK bằng OCR + Neo tọa độ + HSV (không cần template)."""
 
+import re
 import time
 import logging
 
 import config
 from modules.afk_detectors import (
-    AfkLoopState, detectPassiveWaitState, findAutoProgressState,
-    findMainLobbyEntry, findPauseAutoConfirmCancel, isMainOverworldScreen, roiToScreenRect,
+    AfkLoopState, detectPassiveWaitState, findAutoProgressState, findInBattleAuto,
+    findMainLobbyEntry, findPauseAutoConfirmCancel, isMainOverworldScreen, parseStagesCleared, roiToScreenRect,
 )
 from modules.debug_snapshot import saveSnapshot
 from modules.game_actions import describePopupCause, safeClick as _safeClick, safeEscape as _safeEscape
@@ -65,6 +66,30 @@ def _findKey(bot, items, keyName: str, excludeKeys=None, extraExcludes=None, exa
                             exactOnly=exactOnly, wholePhrase=wholePhrase)
 
 
+def _waitKeyGone(bot, keyName: str, timeout: float, **findArgs) -> bool:
+    """Bot thật: quét lại tới khi nút `keyName` biến mất (đã chuyển màn), tối đa timeout giây; True nếu đã biến mất."""
+    if not hasattr(bot, "peekScreen"):
+        return True
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        screen, _, _, _, items = _scanGame(bot)
+        if screen is None or not _findKey(bot, items, keyName, **findArgs):
+            return True
+        if not _wait(bot, config.SCREEN_RESCAN_INTERVAL):
+            return False
+    return False
+
+
+def _confirmStillThere(bot, keyName: str, **findArgs) -> bool:
+    """Bot thật: quét lại 1 lần sau giây lát; chữ thoáng qua (hiệu ứng/kỹ năng trong trận) sẽ không còn."""
+    if not hasattr(bot, "peekScreen"):
+        return True
+    if not _wait(bot, config.SCREEN_CONFIRM_DELAY):
+        return False
+    screen, _, _, _, items = _scanGame(bot)
+    return screen is not None and bool(_findKey(bot, items, keyName, **findArgs))
+
+
 def _handleDefeatSwitchMode(bot, screen, originX: int, originY: int, rect, items, retryHit, preferChallenge: bool) -> bool:
     """Quay về sảnh khi thua đủ mốc và đổi nhánh ưu tiên giữa Huyền Linh và Thường."""
     newPrefer = not preferChallenge
@@ -94,7 +119,10 @@ def _tryClickStageOption(bot, screen, items, rect, preferChallenge: bool) -> boo
         hit = _findKey(bot, items, keyName, excludeKeys=excludeKeys, extraExcludes=extraExcludes, wholePhrase=wholePhrase)
         if hit:
             bot._log(f"🖱 Click '{label}' tại ({hit[0]}, {hit[1]})...")
-            _clickSettle(bot, hit[0], hit[1], rect, screen, 2.5)
+            if _clickSettle(bot, hit[0], hit[1], rect, screen, 2.5):
+                # Game load chậm: nút còn trên màn chưa chắc là bấm hụt -> chờ nút biến mất trước khi tính lại
+                _waitKeyGone(bot, keyName, config.STAGE_ENTER_WAIT, excludeKeys=excludeKeys,
+                             extraExcludes=extraExcludes, wholePhrase=wholePhrase)
             return True
     return False
 
@@ -161,16 +189,30 @@ def run_auto_afk(bot):
             _applyStatsModalTeam(bot, screen, originX, originY, rect, items, st=st)
             continue
 
-        closeHit = _findKey(bot, items, "close_btn", exactOnly=True)
-        finishHit = _findKey(bot, items, "auto_battle_complete", excludeKeys=["in_battle_auto"], extraExcludes=config.FIGHT_EXTRA_EXCLUDES)
+        # Đang trong trận (đồng hồ / thanh 'Tự Động Chiến Đấu') thì không có màn Hoàn Tất hay nút Đóng thật
+        inBattle = findInBattleAuto(bot, items, _findKey, rect=rect)
+        finishArgs = dict(excludeKeys=["in_battle_auto"], extraExcludes=config.FIGHT_EXTRA_EXCLUDES)
+        closeHit = None if inBattle else _findKey(bot, items, "close_btn", exactOnly=True)
+        finishHit = None if inBattle else _findKey(bot, items, "auto_battle_complete", **finishArgs)
+        if finishHit and not re.search(r"hoan\s*tat|complete", finishHit[3].normText):
+            finishHit = None  # Khớp mờ kiểu 'Tự Động Hoán Đổi' (kỹ năng) — không có chữ 'hoàn tất' thật
+        if (closeHit or finishHit) and not (_confirmStillThere(bot, "close_btn", exactOnly=True) if closeHit
+                                            else _confirmStillThere(bot, "auto_battle_complete", **finishArgs)):
+            continue
         if closeHit or finishHit:
             target = closeHit or finishHit
             # Chỉ tính thua khi có màn 'Hoàn Tất' / 'Thất bại'; nút 'Đóng' của popup khác thì chỉ đóng
             isDefeat = bool(finishHit) or bool(_findKey(bot, items, "defeat"))
-            bot._log("🖱 Phát hiện màn 'Hoàn Tất' / nút 'Đóng'. Click đóng quay lại chọn chế độ..." if isDefeat
-                     else "🖱 Phát hiện popup có nút 'Đóng' (không phải màn thua). Click đóng...")
+            cleared = parseStagesCleared(items) if finishHit else None
+            if cleared:
+                # Auto đã thắng qua >= 1 màn rồi mới dừng -> chuỗi thua liên tiếp phải tính lại từ đầu
+                st.onVictory()
+                bot._log(f"🎉 Auto đã vượt {cleared} màn trước khi dừng — reset chuỗi thua liên tiếp.")
             if isDefeat:
-                st.recordDefeat(fromMainDone=True)
+                fails = st.recordDefeat(fromMainDone=True)
+                bot._log(f"🖱 Màn 'Hoàn Tất' (thua lần {fails}/{FAIL_THRESHOLD_TO_SWITCH_MODE} liên tiếp). Click đóng quay lại chọn chế độ...")
+            else:
+                bot._log("🖱 Phát hiện popup có nút 'Đóng' (không phải màn thua). Click đóng...")
             st.markProgress("auto_battle_complete" if isDefeat else "close_popup")
             _clickSettle(bot, target[0], target[1], rect, screen, 2.5)
             continue

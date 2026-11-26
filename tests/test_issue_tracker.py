@@ -38,6 +38,7 @@ class TestIssueTracker(unittest.TestCase):
         self.assertIsNone(tr.observe("⏳ Đang theo dõi trận đấu..."))
         self.assertIsNone(tr.observe("🖱 Click 'Thử Lại'..."))
         self.assertIsNone(tr.observe("❌ Trận đấu THẤT BẠI (Lần thứ 2/5 liên tiếp)!"))
+        self.assertIsNone(tr.observe("⚠️ Mất cửa sổ game AFK Journey, tạm dừng thao tác để tránh click nhầm..."))
         self.assertIsNotNone(tr.observe("⚠️ Không tìm thấy nút 'Sao chép', nhấn ESC."))
 
     def test_slugify(self):

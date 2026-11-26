@@ -65,7 +65,8 @@ OCR_KEYWORDS = {
     "stats": ["thanh tich", "records"],
     "owned_team": ["doi hinh da so", "hien thi doi hinh", "owned"],
     "copy_team": ["sao chep", "copy"],
-    "auto_battle_complete": ["tu dong hoan", "tu dong hoan tat", "auto battle complete"],
+    # Bắt buộc có 'hoàn tất': 'tu dong hoan' từng khớp nhầm chữ trong trận như 'Tự Động Hồi Phục' / 'Hoán Đổi'
+    "auto_battle_complete": ["dong hoan tat", "auto battle complete"],
     "close_btn": ["dong", "close"],
     "auto_battle": ["tu dong", "chien dau tu dong", "tudong", "auto battle"],
     "auto_progress": ["tu dong xu ly", "auto progress"],
@@ -131,7 +132,8 @@ DEBUG_UNKNOWN_STREAK = 8            # Số vòng liên tiếp không nhận ra m
 # (ảnh game + OCR + log gần nhất + vị trí chuột/focus). Bot crash thì lưu ngay kèm traceback.
 ISSUE_REPEAT_THRESHOLD = 5
 ISSUE_WINDOW_SECONDS = 600
-ISSUE_IGNORE_SUBSTRINGS = ["THẤT BẠI", "Thua lần"]   # Thua trận là diễn biến bình thường, không phải lỗi bot
+# Thua trận là diễn biến bình thường; cửa sổ game bị che / chuyển cửa sổ là do người dùng — không phải lỗi bot
+ISSUE_IGNORE_SUBSTRINGS = ["THẤT BẠI", "Thua lần", "Mất cửa sổ game"]
 DEBUG_RECENT_LOG_LINES = 150        # Số dòng log gần nhất đính kèm trong gói debug
 
 # ========================
@@ -148,6 +150,13 @@ SCREEN_LOCAL_CHANGE_RATIO = 0.01    # >=1% pixel đổi cũng tính là đã chu
 SCREEN_RESCAN_INTERVAL = 0.5        # Quét lại khi màn mới load chậm chưa có nút cần tìm
 PREP_SCREEN_WAIT = 4.0              # Tối đa chờ màn chuẩn bị đấu / bảng Thành tích load (giây)
 TEAM_SWITCH_WAIT = 0.6              # Chờ sau mỗi lần bấm mũi tên đổi team (chỉ đổi ảnh nhỏ)
+SCREEN_CONFIRM_DELAY = 0.4          # Quét lại sau N giây để xác nhận màn Hoàn Tất / nút Đóng không phải chữ thoáng qua
+STAGE_ENTER_WAIT = 3.0              # Sau khi bấm nút vào trận ở sảnh: chờ nút biến mất (game load chậm) rồi mới tính là bấm hụt
+
+# macOS (game iPad): con trỏ nằm yên trên nút '✕ Tự Động Chiến Đấu' có thể làm game hiện popup tắt auto.
+# Sau mỗi click, đưa chuột lên thanh tiêu đề cửa sổ game (không bấm được gì).
+CURSOR_PARK_AFTER_CLICK = sys.platform == "darwin"
+CURSOR_PARK_TITLEBAR_OFFSET = 12    # Điểm đỗ: giữa thanh tiêu đề, cách mép trên cửa sổ N điểm
 SCREEN_SETTLE_MIN_WAIT = 0.4        # Chờ tối thiểu trước khi bắt đầu so khung hình
 SCREEN_SETTLE_POLL = 0.3
 

@@ -1,8 +1,4 @@
-"""
-Module điều khiển chuột và bàn phím đa nền tảng:
-- Windows: Virtual Desktop + kiểm tra giá trị trả về SendInput cho cả move và click
-- macOS: dùng pyautogui (tọa độ điểm logic CoreGraphics)
-"""
+"""Điều khiển chuột/bàn phím: Windows dùng SendInput (Virtual Desktop), macOS dùng Quartz (điểm logic)."""
 
 import ctypes
 import logging
@@ -187,6 +183,7 @@ class Controller:
     def __init__(self, delay_after_click: float = 0.5):
         self.delay_after_click = delay_after_click
         self.lastClick: tuple[float, int, int] | None = None  # (time.time(), x, y) của click thành công gần nhất
+        self.lastBotCursor: tuple[int, int] | None = None     # Vị trí chuột cuối cùng do bot đặt (click hoặc đỗ chuột)
 
     def click(
         self,
@@ -211,6 +208,7 @@ class Controller:
                 return False
 
             self.lastClick = (time.time(), int(x), int(y))
+            self.lastBotCursor = (int(x), int(y))
             sleepTime = delay if delay is not None else self.delay_after_click
             _sleepWithStop(sleepTime, stop_event)
             logger.debug(f"Click {button} tại ({x}, {y})")
@@ -248,7 +246,10 @@ class Controller:
     def move_to(self, x: int, y: int) -> bool:
         """Di chuyển chuột đến (x, y) không click"""
         try:
-            return _moveCursor(x, y)
+            ok = _moveCursor(x, y)
+            if ok:
+                self.lastBotCursor = (int(x), int(y))
+            return ok
         except Exception as e:
             logger.error(f"Lỗi di chuyển chuột đến ({x}, {y}): {e}")
             return False
