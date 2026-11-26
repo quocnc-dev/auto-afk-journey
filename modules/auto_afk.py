@@ -156,7 +156,7 @@ def run_auto_afk(bot):
     bot._log("🚀 Bắt đầu vòng lặp Auto AFK bằng OCR...")
 
     st = AfkLoopState()
-    missingWindowSince, lastFrame, unknownStreak = None, (None, None, None), 0
+    missingWindowSince, lastFrame, unknownStreak, pauseRepeat = None, (None, None, None), 0, 0
 
     while not bot._stop_event.is_set():
         now = time.time()
@@ -181,8 +181,12 @@ def run_auto_afk(bot):
         missingWindowSince, lastFrame, prevUnknown, unknownStreak = None, (screen, items, rect), unknownStreak, 0
 
         pauseCancel = findPauseAutoConfirmCancel(bot, screen, originX, originY, items, _findKey)
+        pauseRepeat = pauseRepeat + 1 if pauseCancel is not None else 0
         if pauseCancel is not None:
             st.markProgress("pause_auto_prompt")
+            if pauseRepeat == config.PAUSE_PROMPT_STUCK_REPEAT:
+                bot._log(f"⚠️ Popup tắt auto vẫn còn sau {pauseRepeat} lần bấm X — lưu ảnh debug để kiểm tra vị trí nút.")
+                saveSnapshot(bot, "pause_prompt_stuck", screen, items, rect, extra={"click": list(pauseCancel)})
             bot._log("⚠️ Phát hiện hộp thoại 'Tắt chế độ Chiến Đấu Tự Động?'. Bấm X để tiếp tục auto...")
             _safeClick(bot, pauseCancel[0], pauseCancel[1], rect)
             _settle(bot, screen, 1.5)

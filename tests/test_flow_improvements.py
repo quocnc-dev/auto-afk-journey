@@ -1,14 +1,19 @@
 """Unit tests: chờ màn hình đổi sau click, đếm thua chỉ khi thật sự thua, ROI cho từ khóa chung, giới hạn OCR sâu, mss theo thread."""
 
+import os
+import shutil
+import tempfile
 import threading
 import unittest
 
+import cv2
 import numpy as np
 
 import config
 import vision
 from modules import auto_afk
-from modules.afk_detectors import findMainLobbyEntry
+from modules.afk_detectors import findMainLobbyEntry, findPauseAutoConfirmCancel
+from modules.debug_snapshot import DebugSnapshotter
 from modules.game_actions import frameDiff, waitForScreenChange
 from ocr_engine import OcrEngine, OcrItem, normalizeText
 from tests.test_ocr_and_logic import MockBot
@@ -175,6 +180,47 @@ class TestDeepScanThrottle(unittest.TestCase):
         # 5 vòng liên tiếp trong cùng khoảng thời gian ngắn -> chỉ 1 lần quét sâu (2 vùng góc x 2 kiểu)
         self.assertLessEqual(len(roiCalls), 4)
         self.assertGreater(len(roiCalls), 0)
+
+
+class TestPausePromptRealScreen(unittest.TestCase):
+    """Ảnh thật (macOS, cửa sổ 678x936): nền popup màu kem từng bị nhận nhầm là nút X -> click lệch lên trên."""
+
+    FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "pause_auto_prompt_678x936.jpg")
+    X_CENTER = (383, 613)  # Tâm nút X đo tay trên ảnh (tọa độ trong cửa sổ)
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ocr = OcrEngine()
+        cls.img = cv2.imread(cls.FIXTURE)
+
+    def test_cancel_x_hits_real_button(self):
+        self.assertIsNotNone(self.img, "Thiếu ảnh fixture")
+        ox, oy = 1001, 30
+        items = self.ocr.scanImage(self.img, originX=ox, originY=oy)
+        bot = MockBot(self.ocr, [])
+        bot._scanRect = (ox, oy, 678, 936)
+        pos = findPauseAutoConfirmCancel(bot, self.img, ox, oy, items, auto_afk._findKey)
+        self.assertIsNotNone(pos)
+        self.assertLessEqual(abs(pos[0] - (ox + self.X_CENTER[0])), 20, pos)
+        self.assertLessEqual(abs(pos[1] - (oy + self.X_CENTER[1])), 20, pos)
+
+    def test_stuck_popup_saves_debug_snapshot(self):
+        tmp = tempfile.mkdtemp(prefix="afk_pause_")
+        try:
+            scene = [_ocrItem("Tắt chế độ Chiến Đấu Tự Động?", 338, 426, w=320, h=26)]
+            bot = MockBot(self.ocr, [self.img] * config.PAUSE_PROMPT_STUCK_REPEAT)
+            bot.debugSnap = DebugSnapshotter(baseDir=tmp, minInterval=0, enabled=True)
+            origScan, origWait = bot.ocr.scanImage, auto_afk._wait
+            bot.ocr.scanImage = lambda img, originX=0, originY=0, roi=None: list(scene)
+            auto_afk._wait = lambda b, s: True
+            try:
+                auto_afk.run_auto_afk(bot)
+            finally:
+                bot.ocr.scanImage, auto_afk._wait = origScan, origWait
+            self.assertEqual(len(bot.ctrl.clicks), config.PAUSE_PROMPT_STUCK_REPEAT)
+            self.assertTrue(any("pause_prompt_stuck" in f for f in os.listdir(tmp)))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 class TestCapturePerThread(unittest.TestCase):

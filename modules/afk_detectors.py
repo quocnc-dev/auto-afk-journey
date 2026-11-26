@@ -137,7 +137,11 @@ def hasBattleTimer(items, rect: tuple[int, int, int, int] | None) -> bool:
 
 
 def findPauseAutoConfirmCancel(bot, screen, originX: int, originY: int, items, findKeyFn) -> tuple[int, int] | None:
-    """Phát hiện popup 'Tắt chế độ Chiến Đấu Tự Động?' và trả về tọa độ nút X để tiếp tục auto."""
+    """
+    Phát hiện popup 'Tắt chế độ Chiến Đấu Tự Động?' và trả về tọa độ nút X (hủy) để tiếp tục auto.
+    Nút X nằm cùng hàng, bên trái nút ✓ xanh lá một khoảng ~1.35 lần bề rộng nút ✓ (đo trên ảnh thật).
+    Không dò theo vùng trắng vì nền popup cũng màu kem sáng, sẽ khớp nhầm cả nền.
+    """
     hit = findKeyFn(bot, items, "pause_auto_prompt")
     if not hit:
         return None
@@ -155,18 +159,27 @@ def findPauseAutoConfirmCancel(bot, screen, originX: int, originY: int, items, f
             greenBoxes = [cv2.boundingRect(c) for c in contours if cv2.contourArea(c) >= 250]
             if greenBoxes:
                 gx, gy, gw, gh = max(greenBoxes, key=lambda b: b[2] * b[3])
-                wMask = ((hsv[:, :, 1] < 45) & (hsv[:, :, 2] > 205)).astype(np.uint8) * 255
-                wContours, _ = cv2.findContours(wMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                for wc in wContours:
-                    if cv2.contourArea(wc) < 200:
-                        continue
-                    wx, wy, ww, wh = cv2.boundingRect(wc)
-                    wcx, wcy = wx + ww // 2, wy + wh // 2
-                    gcx, gcy = gx + gw // 2, gy + gh // 2
-                    if gx - int(gw * 2.5) <= wcx <= gx - int(gw * 0.4) and abs(wcy - gcy) <= gh:
-                        return (originX + x1 + wcx, originY + y1 + wcy)
-                return (originX + x1 + gx + gw // 2 - int(gw * 1.45), originY + y1 + gy + gh // 2)
+                gcx, gcy = gx + gw // 2, gy + gh // 2
+                estX = gcx - int(gw * config.PAUSE_CANCEL_OFFSET_MULT)
+                cx, cy = _refineCancelGlyph(hsv, estX, gcy, gw, gh) or (estX, gcy)
+                return (originX + x1 + cx, originY + y1 + cy)
     return (originX + int(imgW * 0.56), originY + int(imgH * 0.66))
+
+
+def _refineCancelGlyph(hsv, estX: int, estY: int, gw: int, gh: int) -> tuple[int, int] | None:
+    """Tinh chỉnh theo nét chữ 'X' tối màu gần vị trí ước lượng; chỉ nhận vùng đúng cỡ glyph."""
+    darkMask = ((hsv[:, :, 2] < 150) & (hsv[:, :, 1] < 90)).astype(np.uint8) * 255
+    contours, _ = cv2.findContours(darkMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    best = None
+    for c in contours:
+        bx, by, bw, bh = cv2.boundingRect(c)
+        if not (0.15 * gw <= bw <= 0.6 * gw and 0.15 * gh <= bh <= 0.6 * gh):
+            continue
+        ccx, ccy = bx + bw // 2, by + bh // 2
+        dist = abs(ccx - estX) + abs(ccy - estY)
+        if abs(ccx - estX) <= 0.4 * gw and abs(ccy - estY) <= 0.35 * gh and (best is None or dist < best[0]):
+            best = (dist, ccx, ccy)
+    return (best[1], best[2]) if best else None
 
 
 def findInBattleAuto(bot, items, findKeyFn, rect=None):
