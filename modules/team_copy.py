@@ -37,13 +37,20 @@ def scanUntilKey(bot, keyName: str, timeout: float):
 
 
 def _snapshotIfArrowMoved(bot, arrow, screen, items, rect) -> None:
-    """Mũi tên chuyển team nằm khác chỗ lần trước -> có thể dò nhầm (vd 1482,320) -> lưu ảnh bảng Thành tích để kiểm tra."""
+    """
+    Mũi tên chuyển team nằm khác chỗ lần trước -> có thể dò nhầm (vd 1482,320) -> lưu ảnh bảng Thành tích.
+    So theo tọa độ trong cửa sổ game để kéo cửa sổ đi chỗ khác không bị báo nhầm.
+    """
+    left, top = (rect[0], rect[1]) if rect else (0, 0)
+    rel = (arrow[0] - left, arrow[1] - top)
     prev = getattr(bot, "_lastTeamArrow", None)
-    bot._lastTeamArrow = arrow
-    if prev is None or max(abs(arrow[0] - prev[0]), abs(arrow[1] - prev[1])) <= config.TEAM_ARROW_MOVED_PX:
+    bot._lastTeamArrow = rel
+    if prev is None or max(abs(rel[0] - prev[0]), abs(rel[1] - prev[1])) <= config.TEAM_ARROW_MOVED_PX:
         return
-    bot._log(f"🔎 Mũi tên chuyển team ở ({arrow[0]}, {arrow[1]}), khác lần trước ({prev[0]}, {prev[1]}) — lưu ảnh để kiểm tra.")
-    saveSnapshot(bot, "team_arrow_moved", screen, items, rect, extra={"arrow": list(arrow), "prevArrow": list(prev)})
+    path = saveSnapshot(bot, "team_arrow_moved", screen, items, rect,
+                        extra={"arrow": list(arrow), "arrowInWindow": list(rel), "prevArrowInWindow": list(prev)})
+    bot._log(f"🔎 Mũi tên chuyển team ở ({rel[0]}, {rel[1]}) trong cửa sổ, khác lần trước ({prev[0]}, {prev[1]})"
+             + (" — đã lưu ảnh để kiểm tra." if path else "."))
 
 
 def applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsItems,
@@ -64,34 +71,36 @@ def applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsItem
     # Mỗi lần thua chép team kế tiếp: bảng mở ở team đầu -> bấm mũi tên `teamCursor` lần để tới team (teamCursor + 1)
     teamMoves = st.teamCursor if st is not None else max(0, failedAttempts - 1)
     targetTeam = teamMoves + 1
-    alreadySwitched = st.teamSwitchedInStats if st is not None else False
-    if teamMoves > 0 and not alreadySwitched:
+    # Lần trước bị hủy giữa chừng (mất focus...) thì bảng đã lệch sẵn vài team -> chỉ bấm phần còn thiếu
+    clicksDone = st.statsArrowClicks if st is not None else 0
+    if teamMoves > clicksDone:
         nextArrow = findNextTeamArrow(statsScreen, ox, oy)
         if nextArrow:
             _snapshotIfArrowMoved(bot, nextArrow, statsScreen, statsItems, statsRect)
-            bot._log(f"🖱 Click chuyển sang Team tiếp theo ({teamMoves} lần)...")
-            for _ in range(teamMoves):
+            bot._log(f"🖱 Click chuyển sang Team tiếp theo ({teamMoves - clicksDone} lần)...")
+            for _ in range(teamMoves - clicksDone):
                 if not core._safeClick(bot, nextArrow[0], nextArrow[1], statsRect):
                     return
+                if st is not None:
+                    st.statsArrowClicks += 1
                 # Chỉ đổi ảnh chân dung team (vùng nhỏ) -> chờ ngắn cố định thay vì chờ cả màn hình đổi
                 if not core._wait(bot, config.TEAM_SWITCH_WAIT):
                     return
-            if st is not None:
-                st.teamSwitchedInStats = True
             statsScreen, ox, oy, statsRect, statsItems = core._scanGame(bot)
             if statsScreen is None:
                 return
         else:
             # Bảng Thành tích (đã lọc đội sở hữu) chỉ có 1 đội hoặc đã hết danh sách — không phải lỗi bot
-            bot._log("🔎 Bảng Thành tích không có nút chuyển team (chỉ có 1 đội phù hợp / đã hết danh sách) — chép team #1.")
-            targetTeam = 1
+            targetTeam = clicksDone + 1
+            bot._log(f"🔎 Bảng Thành tích không có nút chuyển team (chỉ có {targetTeam} đội phù hợp / đã hết danh sách)"
+                     f" — chép team #{targetTeam}.")
 
     copyHit = core._findKey(bot, statsItems, "copy_team")
     if copyHit:
         bot._log(f"🖱 Click 'Sao chép' đội hình (team #{targetTeam} trong bảng Thành tích)...")
         clicked = core._safeClick(bot, copyHit[0], copyHit[1], statsRect)
         if st is not None:
-            st.teamSwitchedInStats = False
+            st.statsArrowClicks = 0
             if clicked:
                 st.teamCursor = targetTeam
                 st.needTeamChange = False
@@ -114,6 +123,7 @@ def handlePickTeamInStats(bot, st: AfkLoopState, prepFrame=None):
             bot._log("⚠️ Không tìm thấy nút 'Thành tích' ở màn hình chuẩn bị đấu.")
         return
     prepScreen, _, _, prepRect, _, statsHit = prep
+    st.statsArrowClicks = 0  # Bảng Thành tích mới mở luôn bắt đầu ở team đầu
     bot._log("🖱 Click 'Thành tích'...")
     if not core._safeClick(bot, statsHit[0], statsHit[1], prepRect) or not core._settle(bot, prepScreen, 2.0):
         return

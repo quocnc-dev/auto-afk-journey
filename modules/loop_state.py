@@ -12,7 +12,7 @@ class AfkLoopState:
 
     failedAttempts: int = 0          # Chuỗi thua liên tiếp (reset khi thắng) -> đủ ngưỡng thì đổi mode
     defeatCounted: bool = False
-    teamSwitchedInStats: bool = False
+    statsArrowClicks: int = 0        # Số lần đã bấm mũi tên chuyển team thành công trong bảng Thành tích đang mở
     # Team thứ mấy trong bảng Thành tích của MÀN HIỆN TẠI đã chép (0 = chưa chép). Bảng Thành tích là theo từng màn:
     # vượt màn thì về 0 (màn mới chép lại từ team #1), thua tiếp trên cùng màn thì sang team #2, #3...
     teamCursor: int = 0
@@ -34,14 +34,14 @@ class AfkLoopState:
         if not self.defeatCounted:
             self.failedAttempts += 1
         self.defeatCounted = fromMainDone
-        self.teamSwitchedInStats = False
+        self.statsArrowClicks = 0
         self.lobbyClicksSameMode = 0
         self.needTeamChange = True
         return self.failedAttempts
 
     def onEnterBattle(self):
         self.defeatCounted = False
-        self.teamSwitchedInStats = False
+        self.statsArrowClicks = 0
         self.lobbyClicksSameMode = 0
 
     def onModeSwitched(self):
@@ -55,7 +55,7 @@ class AfkLoopState:
         self.teamCursor = 0
         self.failedAttempts = 0
         self.defeatCounted = False
-        self.teamSwitchedInStats = False
+        self.statsArrowClicks = 0
         self.lobbyClicksSameMode = 0
 
     def resolveLobbySwitch(self, bot, failThreshold: int) -> bool:

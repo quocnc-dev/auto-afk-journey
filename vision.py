@@ -74,7 +74,3 @@ class ScreenCapture:
         if img.shape[1] != w or img.shape[0] != h:
             img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
         return (img, left, top)
-
-    def get_screen_size(self):
-        monitor = self.sct.monitors[1]
-        return monitor["width"], monitor["height"]

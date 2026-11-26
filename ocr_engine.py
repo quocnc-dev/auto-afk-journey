@@ -261,6 +261,9 @@ def findNextTeamArrow(image: np.ndarray, originX: int = 0, originY: int = 0, roi
     whiteMask = ((hsv[:, :, 1] < 55) & (hsv[:, :, 2] > 195)).astype(np.uint8) * 255
     contours, _ = cv2.findContours(whiteMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+    # Chọn ứng viên giống nút tròn nhất (không lấy contour đầu tiên: thứ tự findContours tùy ý, từng khớp nhầm
+    # một nét trắng trên ảnh tướng ở (1482, 320) thay vì mũi tên thật)
+    best, bestScore = None, config.NEXT_TEAM_MIN_RING_SCORE
     for contour in contours:
         area = cv2.contourArea(contour)
         if area < 20 or area > 1500:
@@ -268,20 +271,29 @@ def findNextTeamArrow(image: np.ndarray, originX: int = 0, originY: int = 0, roi
         bx, by, bw, bh = cv2.boundingRect(contour)
         if bw <= 0 or bh <= 0:
             continue
-        aspect = bh / bw
-        # Ký tự '>' cao hơn rộng (thường ~1.4 -> 3.0) và nằm trong vòng tròn tối hơn xung quanh
-        if 1.3 <= aspect <= 3.2 and 10 <= bh <= max(45, int(imgH * 0.08)):
-            cx = bx + bw // 2
-            cy = by + bh // 2
-            # Kiểm tra nền xung quanh là nút tròn xám/tím (độ bão hòa thấp, không phải nền trắng tinh)
-            pad = max(6, bh // 2)
-            px1, py1 = max(0, cx - pad), max(0, cy - pad)
-            px2, py2 = min(region.shape[1], cx + pad), min(region.shape[0], cy + pad)
-            bgPatch = hsv[py1:py2, px1:px2]
-            if bgPatch.size == 0:
-                continue
-            medianVal = float(np.median(bgPatch[:, :, 2]))
-            if 60 <= medianVal <= 200:
-                return (rx1 + cx + originX, ry1 + cy + originY)
+        # Ký tự '>' cao hơn rộng (thường ~1.4 -> 3.0)
+        if not (1.3 <= bh / bw <= 3.2 and 10 <= bh <= max(45, int(imgH * 0.08))):
+            continue
+        cx, cy = bx + bw // 2, by + bh // 2
+        score = _ringScore(hsv, cx, cy, bh)
+        if score > bestScore:
+            best, bestScore = (rx1 + cx + originX, ry1 + cy + originY), score
+    return best
 
-    return None
+
+def _ringScore(hsv: np.ndarray, cx: int, cy: int, glyphH: int) -> float:
+    """Tỉ lệ điểm trên vành quanh ký tự '>' có màu xám/tím của thân nút tròn (bão hòa thấp, độ sáng vừa)."""
+    h, w = hsv.shape[:2]
+    rIn, rOut = 0.6 * glyphH, 0.85 * glyphH  # thân nút: ngoài nét '>' nhưng chưa ra khỏi viền tròn
+    y1, y2 = max(0, int(cy - rOut)), min(h, int(cy + rOut) + 1)
+    x1, x2 = max(0, int(cx - rOut)), min(w, int(cx + rOut) + 1)
+    if y2 <= y1 or x2 <= x1:
+        return 0.0
+    yy, xx = np.ogrid[y1:y2, x1:x2]
+    dist = np.sqrt((yy - cy) ** 2 + (xx - cx) ** 2)
+    ring = (dist >= rIn) & (dist <= rOut)
+    if not ring.any():
+        return 0.0
+    patch = hsv[y1:y2, x1:x2]
+    body = (patch[:, :, 1] < 90) & (patch[:, :, 2] >= 60) & (patch[:, :, 2] <= 200)
+    return float(np.count_nonzero(body & ring)) / float(np.pi * (rOut ** 2 - rIn ** 2))

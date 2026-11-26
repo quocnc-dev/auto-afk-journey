@@ -217,29 +217,6 @@ class Controller:
             logger.error(f"Lỗi click tại ({x}, {y}): {e}")
             return False
 
-    def double_click(self, x: int, y: int, delay: float = None, stop_event=None, guard_fn=None) -> bool:
-        """Double click tại (x, y) an toàn theo stop_event và guard_fn."""
-        try:
-            if not _passesGuards(stop_event, guard_fn):
-                return False
-            if not _moveCursor(x, y) or not _sleepWithStop(0.05, stop_event):
-                return False
-            if not _passesGuards(stop_event, guard_fn):
-                return False
-            if not _sendMouseClick("left"):
-                return False
-            if not _passesGuards(stop_event, guard_fn):
-                return False
-            if not _sendMouseClick("left"):
-                return False
-
-            sleepTime = delay if delay is not None else self.delay_after_click
-            _sleepWithStop(sleepTime, stop_event)
-            return True
-        except Exception as e:
-            logger.error(f"Lỗi double click tại ({x}, {y}): {e}")
-            return False
-
     def cursorPos(self) -> tuple[int, int] | None:
         return getCursorPos()
 
@@ -269,31 +246,3 @@ class Controller:
 
     def press_escape(self, stop_event=None, guard_fn=None) -> bool:
         return self.press_key("esc", stop_event=stop_event, guard_fn=guard_fn)
-
-    def press_enter(self, stop_event=None, guard_fn=None) -> bool:
-        return self.press_key("enter", stop_event=stop_event, guard_fn=guard_fn)
-
-    def drag(self, x1: int, y1: int, x2: int, y2: int, duration: float = 0.4, stop_event=None, guard_fn=None) -> bool:
-        """Kéo từ (x1,y1) đến (x2,y2)"""
-        try:
-            if not _passesGuards(stop_event, guard_fn) or not _moveCursor(x1, y1) or not _sleepWithStop(0.05, stop_event):
-                return False
-            if not _passesGuards(stop_event, guard_fn):
-                return False
-            _inputBackend.mouseDown()
-            try:
-                steps = max(5, int(duration / 0.03))
-                for step in range(1, steps + 1):
-                    if not _passesGuards(stop_event, guard_fn):
-                        return False
-                    curX = int(x1 + (x2 - x1) * step / steps)
-                    curY = int(y1 + (y2 - y1) * step / steps)
-                    if not _moveCursor(curX, curY) or not _sleepWithStop(duration / steps, stop_event):
-                        return False
-            finally:
-                _inputBackend.mouseUp()
-            _sleepWithStop(0.2, stop_event)
-            return True
-        except Exception as e:
-            logger.error(f"Lỗi drag từ ({x1}, {y1}) đến ({x2}, {y2}): {e}")
-            return False

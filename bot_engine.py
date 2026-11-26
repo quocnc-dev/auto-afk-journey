@@ -68,13 +68,11 @@ class BotEngine:
         self.log_callback = log_callback or (lambda msg: None)
         self.prompt_callback = prompt_callback
         self.state = State.IDLE
-        self.gameHwnd: int | None = None
 
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
         self.task_auto_afk = True
-        self.progress_callback: Callable[[str, int, int], None] | None = None
 
     def start(self):
         """Bắt đầu chạy bot"""
@@ -101,7 +99,6 @@ class BotEngine:
         Không fallback toàn màn hình hoặc chụp khi bị cửa sổ khác che.
         """
         hwnd = findGameWindow(config.GAME_WINDOW_TITLE)
-        self.gameHwnd = hwnd
         if not hwnd or not isWindowForeground(hwnd):
             return None, 0, 0, None
         rect = getClientRectScreen(hwnd)
@@ -169,7 +166,6 @@ class BotEngine:
 
         hwnd = findGameWindow(config.GAME_WINDOW_TITLE)
         if hwnd:
-            self.gameHwnd = hwnd
             focusGameWindow(hwnd)
             if self._stop_event.wait(0.3):
                 return

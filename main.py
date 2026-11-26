@@ -51,7 +51,6 @@ class AFKBotApp(ctk.CTk):
         self.configure(fg_color=COLORS["bg_main"])
 
         self.bot = BotEngine(log_callback=self._on_log, prompt_callback=self._on_prompt)
-        self.bot.progress_callback = self._on_progress
 
         self._log_lines = []
         self._is_running = False
@@ -118,9 +117,6 @@ class AFKBotApp(ctk.CTk):
 
         self.after(0, showDialog)
         doneEvent.wait()
-
-    def _on_progress(self, task, done, total):
-        self.after(0, self._update_stat, "current_task", task.upper())
 
     def _append_log(self, msg):
         self._log_lines.append(msg)

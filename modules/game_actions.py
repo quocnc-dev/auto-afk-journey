@@ -105,16 +105,28 @@ def waitForScreenChange(bot, prevScreen, maxWait: float, waitFn) -> bool:
 
 
 def waitScreenStable(bot, maxWait: float, waitFn) -> bool:
-    """Chờ tới khi 2 khung hình liên tiếp gần như giống nhau (hết hiệu ứng trượt/phóng popup), tối đa maxWait giây."""
+    """
+    Chờ popup hết hiệu ứng trượt, tối đa maxWait giây: chỉ so dải giữa màn hình (nơi có popup, bỏ trận đấu
+    đang chạy phía sau / đồng hồ góc trên) và cần POPUP_STABLE_PAIRS cặp khung liên tiếp đứng yên —
+    1 cặp chưa đủ vì đoạn cuối hiệu ứng ease-out chạy rất chậm.
+    """
     peek = getattr(bot, "peekScreen", None)
     if peek is None:
         return True
-    deadline, last = time.monotonic() + maxWait, peek()
+
+    def band(img):
+        h = img.shape[0]
+        return img[int(h * config.POPUP_STABLE_BAND[0]):int(h * config.POPUP_STABLE_BAND[1])]
+
+    deadline, last, stablePairs = time.monotonic() + maxWait, peek(), 0
     while last is not None and time.monotonic() < deadline:
         if not waitFn(bot, config.POPUP_STABLE_POLL):
             return False
         cur = peek()
-        if cur is None or frameDiff(cur, last) < config.SCREEN_STABLE_THRESHOLD:
+        if cur is None:
+            break
+        stablePairs = stablePairs + 1 if frameDiff(band(cur), band(last)) < config.SCREEN_STABLE_THRESHOLD else 0
+        if stablePairs >= config.POPUP_STABLE_PAIRS:
             break
         last = cur
     return not bot._stop_event.is_set()
