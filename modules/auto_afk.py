@@ -11,7 +11,7 @@ from modules.afk_detectors import (
 )
 from modules.debug_snapshot import saveSnapshot
 from modules.game_actions import describePopupCause, safeClick as _safeClick, safeEscape as _safeEscape
-from modules.game_actions import waitForScreenChange, waitWatchingFocus
+from modules.game_actions import waitForScreenChange, waitScreenStable, waitWatchingFocus
 from modules.team_copy import applyStatsModalTeam as _applyStatsModalTeam, handlePickTeamInStats as _handlePickTeamInStats
 from modules.mode_switch import exitOldModePrep, handleDefeatSwitchMode as _handleDefeatSwitchMode
 
@@ -149,6 +149,16 @@ def run_auto_afk(bot):
             bot._log("⚠️ Phát hiện hộp thoại 'Tắt chế độ Chiến Đấu Tự Động?'. Bấm X để tiếp tục auto...")
             if pauseRepeat == 1:
                 bot._log(describePopupCause(bot, st, now))
+                # Popup vừa hiện thường còn đang trượt vào -> click theo khung hình cũ bị lệch, game bỏ qua.
+                if hasattr(bot, "peekScreen"):
+                    if not waitScreenStable(bot, config.POPUP_SETTLE_MAX_WAIT, _wait):
+                        break
+                    fresh = _scanGame(bot)
+                    freshCancel = fresh[0] is not None and findPauseAutoConfirmCancel(
+                        bot, fresh[0], fresh[1], fresh[2], fresh[4], _findKey)
+                    if not freshCancel:
+                        continue  # popup đã tự đóng / đổi màn: quét lại từ đầu
+                    screen, rect, pauseCancel = fresh[0], fresh[3], freshCancel
             _clickSettle(bot, pauseCancel[0], pauseCancel[1], rect, screen, 1.5)
             continue
 

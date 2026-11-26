@@ -57,6 +57,9 @@ AUTO_PROGRESS_MAX_DY_HEIGHT_MULT = 4.0
 AUTO_PROGRESS_SPLIT_DY_MULT = 2.5
 PAUSE_CANCEL_OFFSET_MULT = 1.35     # Nút X của popup tắt auto: cách tâm nút ✓ xanh N lần bề rộng nút ✓ về bên trái
 PAUSE_PROMPT_STUCK_REPEAT = 3       # Popup tắt auto còn sau N lần bấm X liên tiếp -> lưu ảnh debug
+POPUP_SETTLE_MAX_WAIT = 1.2         # Popup vừa hiện còn đang trượt vào: chờ đứng yên tối đa N giây rồi mới dò lại nút X
+POPUP_STABLE_POLL = 0.15
+TEAM_ARROW_MOVED_PX = 25            # Mũi tên chuyển team lệch quá N px so với lần trước -> lưu ảnh debug bảng Thành tích
 STAGE_CLICK_FALLBACK_THRESHOLD = 2  # Số lần bấm sảnh liên tiếp không vào trận -> đổi chế độ còn lại
 
 # Từ khóa OCR đã chuẩn hóa (không dấu, chữ thường)

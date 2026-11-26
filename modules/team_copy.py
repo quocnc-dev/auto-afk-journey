@@ -8,6 +8,7 @@ import time
 
 import config
 from modules.afk_detectors import AfkLoopState
+from modules.debug_snapshot import saveSnapshot
 from ocr_engine import findNextTeamArrow, inspectCheckboxByText
 
 
@@ -35,6 +36,16 @@ def scanUntilKey(bot, keyName: str, timeout: float):
             return None
 
 
+def _snapshotIfArrowMoved(bot, arrow, screen, items, rect) -> None:
+    """Mũi tên chuyển team nằm khác chỗ lần trước -> có thể dò nhầm (vd 1482,320) -> lưu ảnh bảng Thành tích để kiểm tra."""
+    prev = getattr(bot, "_lastTeamArrow", None)
+    bot._lastTeamArrow = arrow
+    if prev is None or max(abs(arrow[0] - prev[0]), abs(arrow[1] - prev[1])) <= config.TEAM_ARROW_MOVED_PX:
+        return
+    bot._log(f"🔎 Mũi tên chuyển team ở ({arrow[0]}, {arrow[1]}), khác lần trước ({prev[0]}, {prev[1]}) — lưu ảnh để kiểm tra.")
+    saveSnapshot(bot, "team_arrow_moved", screen, items, rect, extra={"arrow": list(arrow), "prevArrow": list(prev)})
+
+
 def applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsItems,
                         st: AfkLoopState | None = None, failedAttempts: int = 1):
     """Bật lọc đội hình đã sở hữu, chuyển sang team kế tiếp (nếu cần) và bấm Sao chép."""
@@ -57,6 +68,7 @@ def applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsItem
     if teamMoves > 0 and not alreadySwitched:
         nextArrow = findNextTeamArrow(statsScreen, ox, oy)
         if nextArrow:
+            _snapshotIfArrowMoved(bot, nextArrow, statsScreen, statsItems, statsRect)
             bot._log(f"🖱 Click chuyển sang Team tiếp theo ({teamMoves} lần)...")
             for _ in range(teamMoves):
                 if not core._safeClick(bot, nextArrow[0], nextArrow[1], statsRect):

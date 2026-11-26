@@ -104,6 +104,22 @@ def waitForScreenChange(bot, prevScreen, maxWait: float, waitFn) -> bool:
     return not bot._stop_event.is_set()
 
 
+def waitScreenStable(bot, maxWait: float, waitFn) -> bool:
+    """Chờ tới khi 2 khung hình liên tiếp gần như giống nhau (hết hiệu ứng trượt/phóng popup), tối đa maxWait giây."""
+    peek = getattr(bot, "peekScreen", None)
+    if peek is None:
+        return True
+    deadline, last = time.monotonic() + maxWait, peek()
+    while last is not None and time.monotonic() < deadline:
+        if not waitFn(bot, config.POPUP_STABLE_POLL):
+            return False
+        cur = peek()
+        if cur is None or frameDiff(cur, last) < config.SCREEN_STABLE_THRESHOLD:
+            break
+        last = cur
+    return not bot._stop_event.is_set()
+
+
 def waitWatchingFocus(bot, st, seconds: float, waitFn, step: float = 0.5) -> bool:
     """Đứng chờ như waitFn nhưng kiểm tra mỗi `step` giây xem game có bị mất focus không (ghi vào st)."""
     isForeground = getattr(bot, "isGameForeground", None)
