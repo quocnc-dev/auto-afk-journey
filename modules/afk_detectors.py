@@ -26,6 +26,7 @@ class AfkLoopState:
     lastStateKey: str | None = None
     lastProgressTime: float = field(default_factory=time.time)
     lastDeepScanTime: float = float("-inf")
+    lastFocusLossTime: float | None = None
 
     def markProgress(self, stateKey: str, refreshAlways: bool = False):
         if refreshAlways or self.lastStateKey != stateKey:

@@ -164,11 +164,29 @@ def _passesGuards(stop_event=None, guard_fn=None) -> bool:
     return True
 
 
+def getCursorPos() -> tuple[int, int] | None:
+    """Vị trí chuột thật hiện tại (tọa độ màn hình logic); None nếu không đọc được."""
+    try:
+        if sys.platform == "win32":
+            class _Point(ctypes.Structure):
+                _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+            pt = _Point()
+            return (pt.x, pt.y) if ctypes.windll.user32.GetCursorPos(ctypes.byref(pt)) else None
+        if sys.platform == "darwin":
+            import Quartz
+            loc = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
+            return (int(round(loc.x)), int(round(loc.y)))
+    except Exception:
+        return None
+    return None
+
+
 class Controller:
     """Điều khiển chuột/bàn phím đa nền tảng (Windows / macOS)"""
 
     def __init__(self, delay_after_click: float = 0.5):
         self.delay_after_click = delay_after_click
+        self.lastClick: tuple[float, int, int] | None = None  # (time.time(), x, y) của click thành công gần nhất
 
     def click(
         self,
@@ -192,6 +210,7 @@ class Controller:
             if not _sendMouseClick(button):
                 return False
 
+            self.lastClick = (time.time(), int(x), int(y))
             sleepTime = delay if delay is not None else self.delay_after_click
             _sleepWithStop(sleepTime, stop_event)
             logger.debug(f"Click {button} tại ({x}, {y})")
@@ -222,6 +241,9 @@ class Controller:
         except Exception as e:
             logger.error(f"Lỗi double click tại ({x}, {y}): {e}")
             return False
+
+    def cursorPos(self) -> tuple[int, int] | None:
+        return getCursorPos()
 
     def move_to(self, x: int, y: int) -> bool:
         """Di chuyển chuột đến (x, y) không click"""

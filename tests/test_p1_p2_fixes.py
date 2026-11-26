@@ -38,6 +38,8 @@ class TestP1P2Fixes(unittest.TestCase):
         self.assertTrue(window_manager.isExactGameTitle("AFKJourney", "AFK Journey"))
 
         eng = bot_engine.BotEngine()
+
+        eng.debugSnap.enabled = False  # test không ghi gói debug vào thư mục log thật
         origFind, origFg, origRect = (
             bot_engine.findGameWindow,
             bot_engine.isWindowForeground,
@@ -114,6 +116,7 @@ class TestP1P2Fixes(unittest.TestCase):
     def test_launch_game_prompts_when_foreground_denied(self):
         prompts = []
         eng = bot_engine.BotEngine(prompt_callback=lambda t, m: prompts.append((t, m)))
+        eng.debugSnap.enabled = False  # test không ghi gói debug vào thư mục log thật
         origFind, origFocus, origRect, origFg = (
             bot_engine.findGameWindow,
             bot_engine.focusGameWindow,
@@ -201,6 +204,7 @@ class TestP1P2Fixes(unittest.TestCase):
     def test_launch_game_prompts_when_input_permission_missing(self):
         prompts = []
         eng = bot_engine.BotEngine(prompt_callback=lambda t, m: prompts.append((t, m)))
+        eng.debugSnap.enabled = False  # test không ghi gói debug vào thư mục log thật
         origFind, origFocus, origRect, origFg, origPerm, origReq, origOpen = (
             bot_engine.findGameWindow,
             bot_engine.focusGameWindow,

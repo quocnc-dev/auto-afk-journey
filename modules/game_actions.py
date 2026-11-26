@@ -76,3 +76,42 @@ def waitForScreenChange(bot, prevScreen, maxWait: float, waitFn) -> bool:
     if not changed:
         bot._log("⚠️ Click xong nhưng màn hình không đổi — có thể click trượt, sẽ quét lại.")
     return not bot._stop_event.is_set()
+
+
+def waitWatchingFocus(bot, st, seconds: float, waitFn, step: float = 0.5) -> bool:
+    """Đứng chờ như waitFn nhưng kiểm tra mỗi `step` giây xem game có bị mất focus không (ghi vào st)."""
+    isForeground = getattr(bot, "isGameForeground", None)
+    if isForeground is None:
+        return waitFn(bot, seconds)
+    remaining = seconds
+    while remaining > 0:
+        if not waitFn(bot, min(step, remaining)):
+            return False
+        remaining -= step
+        if not isForeground():
+            now = time.time()
+            if st.lastFocusLossTime is None or now - st.lastFocusLossTime > 5:
+                bot._log("🔎 Cửa sổ game vừa mất focus (đang ở cửa sổ khác) trong lúc auto.")
+            st.lastFocusLossTime = now
+    return True
+
+
+def describePopupCause(bot, st, now: float) -> str:
+    """Câu chẩn đoán khi popup 'Tắt chế độ Chiến Đấu Tự Động?' hiện ra: do bot click, chuột người dùng hay mất focus."""
+    parts = []
+    lastClick = getattr(bot.ctrl, "lastClick", None)
+    if lastClick:
+        parts.append(f"click gần nhất của bot {now - lastClick[0]:.0f}s trước tại ({lastClick[1]}, {lastClick[2]})")
+    else:
+        parts.append("bot chưa click lần nào")
+    cursorFn = getattr(bot.ctrl, "cursorPos", None)
+    cursor = cursorFn() if cursorFn else None
+    if cursor and lastClick:
+        moved = abs(cursor[0] - lastClick[1]) > 3 or abs(cursor[1] - lastClick[2]) > 3
+        parts.append(f"chuột đang ở ({cursor[0]}, {cursor[1]})"
+                     + (" — đã bị di chuyển, KHÔNG phải do bot" if moved else " — vẫn ở chỗ bot click cuối"))
+    if st.lastFocusLossTime is not None:
+        parts.append(f"game mất focus lần cuối {now - st.lastFocusLossTime:.0f}s trước")
+    else:
+        parts.append("game không bị mất focus từ lúc bắt đầu")
+    return "🔎 Chẩn đoán popup: " + "; ".join(parts) + "."

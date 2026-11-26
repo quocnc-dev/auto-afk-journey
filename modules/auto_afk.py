@@ -9,7 +9,8 @@ from modules.afk_detectors import (
     findMainLobbyEntry, findPauseAutoConfirmCancel, isMainOverworldScreen, roiToScreenRect,
 )
 from modules.debug_snapshot import saveSnapshot
-from modules.game_actions import safeClick as _safeClick, safeEscape as _safeEscape, waitForScreenChange
+from modules.game_actions import describePopupCause, safeClick as _safeClick, safeEscape as _safeEscape
+from modules.game_actions import waitForScreenChange, waitWatchingFocus
 from ocr_engine import inspectCheckboxByText, findNextTeamArrow
 
 logger = logging.getLogger("AFK_Bot.AutoAFK")
@@ -177,6 +178,7 @@ def run_auto_afk(bot):
             break
 
         if screen is None:
+            st.lastFocusLossTime = now
             if missingWindowSince is None:
                 missingWindowSince = now
                 bot._log("⚠️ Mất cửa sổ game AFK Journey, tạm dừng thao tác để tránh click nhầm...")
@@ -195,6 +197,8 @@ def run_auto_afk(bot):
                 bot._log(f"⚠️ Popup tắt auto vẫn còn sau {pauseRepeat} lần bấm X — lưu ảnh debug để kiểm tra vị trí nút.")
                 saveSnapshot(bot, "pause_prompt_stuck", screen, items, rect, extra={"click": list(pauseCancel)})
             bot._log("⚠️ Phát hiện hộp thoại 'Tắt chế độ Chiến Đấu Tự Động?'. Bấm X để tiếp tục auto...")
+            if pauseRepeat == 1:
+                bot._log(describePopupCause(bot, st, now))
             _clickSettle(bot, pauseCancel[0], pauseCancel[1], rect, screen, 1.5)
             continue
 
@@ -246,7 +250,7 @@ def run_auto_afk(bot):
                 bot._log(waitMsg)
             st.markProgress(waitKey, refreshAlways=keepAlive)
             st.onEnterBattle()
-            _wait(bot, config.AUTO_PROGRESS_POLL_INTERVAL)
+            waitWatchingFocus(bot, st, config.AUTO_PROGRESS_POLL_INTERVAL, _wait)
             continue
 
         isMainScreen = isMainOverworldScreen(bot, items, _findKey)

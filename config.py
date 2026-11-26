@@ -127,6 +127,13 @@ DEBUG_MAX_SNAPSHOTS = 40            # Giữ tối đa N snapshot gần nhất, x
 DEBUG_SNAPSHOT_MIN_INTERVAL = 60    # Giây tối thiểu giữa 2 snapshot cùng lý do
 DEBUG_UNKNOWN_STREAK = 8            # Số vòng liên tiếp không nhận ra màn hình -> chụp snapshot
 
+# Cùng 1 cảnh báo/lỗi (log bắt đầu bằng ⚠️ ❌ 💥) lặp lại N lần trong M giây -> tự lưu gói debug
+# (ảnh game + OCR + log gần nhất + vị trí chuột/focus). Bot crash thì lưu ngay kèm traceback.
+ISSUE_REPEAT_THRESHOLD = 5
+ISSUE_WINDOW_SECONDS = 600
+ISSUE_IGNORE_SUBSTRINGS = ["THẤT BẠI", "Thua lần"]   # Thua trận là diễn biến bình thường, không phải lỗi bot
+DEBUG_RECENT_LOG_LINES = 150        # Số dòng log gần nhất đính kèm trong gói debug
+
 # ========================
 #  DELAY (giây)
 # ========================

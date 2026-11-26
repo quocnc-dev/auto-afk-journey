@@ -12,6 +12,8 @@ Các State:
 import time
 import threading
 import logging
+import traceback
+from collections import deque
 from enum import Enum, auto
 from typing import Callable
 
@@ -30,7 +32,7 @@ from window_manager import (
     requestInputPermission,
 )
 from modules.auto_afk import run_auto_afk
-from modules.debug_snapshot import DebugSnapshotter
+from modules.debug_snapshot import DebugSnapshotter, IssueTracker, slugify
 
 logger = logging.getLogger("AFK_Bot")
 
@@ -58,6 +60,10 @@ class BotEngine:
         self.ocr = OcrEngine(config.OCR_FUZZY_THRESHOLD)
         self.ctrl = Controller(delay_after_click=config.DELAY_AFTER_CLICK)
         self.debugSnap = DebugSnapshotter()
+        self.issues = IssueTracker()
+        self.recentLogs: deque[str] = deque(maxlen=config.DEBUG_RECENT_LOG_LINES)
+        self._lastCapture = (None, 0, 0, None)
+        self._savingIssue = False
 
         self.log_callback = log_callback or (lambda msg: None)
         self.prompt_callback = prompt_callback
@@ -102,11 +108,17 @@ class BotEngine:
         if rect is None:
             return None, 0, 0, None
         img, originX, originY = self.capture.capture_window(rect)
+        self._lastCapture = (img, originX, originY, rect)
         return img, originX, originY, rect
 
     def peekScreen(self):
         """Chụp nhanh cửa sổ game (không OCR) để kiểm tra màn hình đã đổi sau click."""
         return self.captureGameScreen()[0]
+
+    def isGameForeground(self) -> bool:
+        """Cửa sổ game có đang ở trên cùng (focus) không — dùng để chẩn đoán popup tự hiện."""
+        hwnd = findGameWindow(config.GAME_WINDOW_TITLE)
+        return bool(hwnd) and isWindowForeground(hwnd)
 
     def canInteractAt(self, x: int, y: int, expectedRect: tuple[int, int, int, int] | None = None) -> bool:
         """Kiểm tra cửa sổ game đang foreground, đúng rect đã chụp và chứa điểm (x, y)."""
@@ -145,6 +157,7 @@ class BotEngine:
         except Exception as e:
             self._log(f"💥 Lỗi không xử lý được: {e}")
             logger.exception("Lỗi không xử lý được trong BotEngine")
+            self.saveIssueBundle("crash", str(e), tracebackText=traceback.format_exc())
             self.state = State.ERROR
         finally:
             if self._stop_event.is_set() and self.state not in (State.ERROR, State.DONE):
@@ -213,10 +226,44 @@ class BotEngine:
         except Exception as e:
             self._log(f"❌ Lỗi khi chạy Auto AFK: {e}")
             logger.exception("Lỗi trong run_auto_afk")
+            self.saveIssueBundle("crash", str(e), tracebackText=traceback.format_exc())
             self.state = State.ERROR
+
+    def saveIssueBundle(self, reason: str, message: str, count: int | None = None, tracebackText: str | None = None):
+        """Lưu gói debug: ảnh game mới nhất + OCR + log gần nhất + chuột/focus/trạng thái (+ traceback nếu crash)."""
+        if self._savingIssue:
+            return None
+        self._savingIssue = True
+        try:
+            fresh = self.captureGameScreen() if not self._stop_event.is_set() else (None, 0, 0, None)
+            screen, ox, oy, rect = fresh if fresh[0] is not None else self._lastCapture
+            try:
+                items = self.ocr.scanImage(screen, originX=ox, originY=oy) if screen is not None else []
+            except Exception:
+                items = []
+            extra = {
+                "message": message, "count": count, "windowSeconds": config.ISSUE_WINDOW_SECONDS,
+                "state": self.state.name, "lastClick": self.ctrl.lastClick, "cursor": self.ctrl.cursorPos(),
+                "gameForeground": self.isGameForeground(), "traceback": tracebackText,
+                "recentLogs": list(self.recentLogs),
+            }
+            path = self.debugSnap.save(reason, screen, items, rect, extra, allowNoImage=True)
+            if path:
+                what = "Bot crash" if reason == "crash" else f"Lỗi lặp lại {count} lần"
+                self._log(f"📸 {what} → đã lưu gói debug: {path}")
+            return path
+        except Exception:
+            logger.exception("Không lưu được gói debug")
+            return None
+        finally:
+            self._savingIssue = False
 
     def _log(self, msg: str):
         timestamp = time.strftime("%H:%M:%S")
         full_msg = f"[{timestamp}] {msg}"
         logger.info(msg)
+        self.recentLogs.append(full_msg)
         self.log_callback(full_msg)
+        hit = self.issues.observe(msg)
+        if hit is not None:
+            self.saveIssueBundle(f"repeat_{slugify(hit[0], 40)}", msg, count=hit[1])
