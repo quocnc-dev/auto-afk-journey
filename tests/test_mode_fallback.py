@@ -128,6 +128,16 @@ class TestModeFallback(unittest.TestCase):
         clicks = self._runWithScenes([prepItems])
         self.assertEqual(clicks, [(285, 892)])
 
+    def test_copy_team_screen_detected_directly_in_main_loop(self):
+        copyModalItems = [
+            _ocrItem("Chỉ hiển thị đội hình đã sở hữu", 180, 20, w=260, h=20),
+            _ocrItem("Màn Chơi Đỉnh Cao Huyễn Linh", 338, 52, w=260, h=20),
+            _ocrItem("Sinh Vật 557", 338, 74, w=140, h=20),
+            _ocrItem("Sao chép", 380, 880, w=160, h=30),
+        ]
+        clicks = self._runWithScenes([copyModalItems])
+        self.assertEqual(clicks, [(380, 880)])
+
 
 if __name__ == "__main__":
     unittest.main()

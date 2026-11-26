@@ -19,6 +19,7 @@ class AfkLoopState:
 
     failedAttempts: int = 0
     defeatCounted: bool = False
+    teamSwitchedInStats: bool = False
     lobbyClicksSameMode: int = 0
     preferChallenge: bool = True
     lastStateKey: str | None = None
@@ -33,16 +34,19 @@ class AfkLoopState:
         if not self.defeatCounted:
             self.failedAttempts += 1
         self.defeatCounted = fromMainDone
+        self.teamSwitchedInStats = False
         self.lobbyClicksSameMode = 0
         return self.failedAttempts
 
     def onEnterBattle(self):
         self.defeatCounted = False
+        self.teamSwitchedInStats = False
         self.lobbyClicksSameMode = 0
 
     def onVictory(self):
         self.failedAttempts = 0
         self.defeatCounted = False
+        self.teamSwitchedInStats = False
         self.lobbyClicksSameMode = 0
 
     def resolveLobbySwitch(self, bot, failThreshold: int) -> bool:

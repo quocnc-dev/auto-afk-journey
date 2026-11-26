@@ -89,23 +89,8 @@ def _handleDefeatSwitchMode(bot, screen, originX: int, originY: int, rect, items
     return newPrefer
 
 
-def _handlePickTeamInStats(bot, failedAttempts: int):
-    """Mở bảng Thành Tích, bật lọc đội hình đã sở hữu và sao chép đội hình phù hợp."""
-    prepScreen, _, _, prepRect, prepItems = _scanGame(bot)
-    if prepScreen is None:
-        return
-    statsHit = _findKey(bot, prepItems, "stats")
-    if not statsHit:
-        bot._log("⚠️ Không tìm thấy nút 'Thành tích' ở màn hình chuẩn bị đấu.")
-        return
-    bot._log("🖱 Click 'Thành tích'...")
-    if not _safeClick(bot, statsHit[0], statsHit[1], prepRect) or not _wait(bot, 2.0):
-        return
-
-    statsScreen, ox, oy, statsRect, statsItems = _scanGame(bot)
-    if statsScreen is None:
-        return
-
+def _applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsItems, st: AfkLoopState | None = None, failedAttempts: int = 1):
+    """Bật lọc đội hình đã sở hữu, chuyển sang team kế tiếp (nếu cần) và bấm Sao chép."""
     ownedHit = _findKey(bot, statsItems, "owned_team")
     if ownedHit:
         isChecked, cbX, cbY = inspectCheckboxByText(statsScreen, ownedHit[3], ox, oy)
@@ -117,32 +102,52 @@ def _handlePickTeamInStats(bot, failedAttempts: int):
             if statsScreen is None:
                 return
 
-    teamMoves = max(0, failedAttempts - 1)
-    if teamMoves > 0:
+    attempts = st.failedAttempts if st is not None else failedAttempts
+    teamMoves = max(0, attempts - 1)
+    alreadySwitched = st.teamSwitchedInStats if st is not None else False
+    if teamMoves > 0 and not alreadySwitched:
         nextArrow = findNextTeamArrow(statsScreen, ox, oy)
         if nextArrow:
             bot._log(f"🖱 Click chuyển sang Team tiếp theo ({teamMoves} lần)...")
             for _ in range(teamMoves):
                 if not _safeClick(bot, nextArrow[0], nextArrow[1], statsRect) or not _wait(bot, 0.8):
                     return
+            if st is not None:
+                st.teamSwitchedInStats = True
             statsScreen, ox, oy, statsRect, statsItems = _scanGame(bot)
             if statsScreen is None:
                 return
         else:
-            bot._log("⚠️ Không tìm thấy nút chuyển Team, nhấn ESC.")
-            _safeEscape(bot)
-            _wait(bot, 1.0)
-            return
+            bot._log("⚠️ Không tìm thấy nút chuyển Team, sao chép đội hình đang hiển thị...")
 
     copyHit = _findKey(bot, statsItems, "copy_team")
     if copyHit:
         bot._log("🖱 Click 'Sao chép' đội hình...")
         _safeClick(bot, copyHit[0], copyHit[1], statsRect)
+        if st is not None:
+            st.teamSwitchedInStats = False
         _wait(bot, 2.0)
     else:
         bot._log("⚠️ Không tìm thấy nút 'Sao chép', nhấn ESC.")
         _safeEscape(bot)
         _wait(bot, 1.0)
+
+
+def _handlePickTeamInStats(bot, st: AfkLoopState):
+    """Mở bảng Thành Tích từ màn chuẩn bị đấu và chọn sao chép đội hình."""
+    prepScreen, _, _, prepRect, prepItems = _scanGame(bot)
+    if prepScreen is None:
+        return
+    statsHit = _findKey(bot, prepItems, "stats")
+    if not statsHit:
+        bot._log("⚠️ Không tìm thấy nút 'Thành tích' ở màn hình chuẩn bị đấu.")
+        return
+    bot._log("🖱 Click 'Thành tích'...")
+    if not _safeClick(bot, statsHit[0], statsHit[1], prepRect) or not _wait(bot, 2.0):
+        return
+    statsScreen, ox, oy, statsRect, statsItems = _scanGame(bot)
+    if statsScreen is not None:
+        _applyStatsModalTeam(bot, statsScreen, ox, oy, statsRect, statsItems, st=st)
 
 
 def _tryClickStageOption(bot, items, rect, preferChallenge: bool) -> bool:
@@ -205,7 +210,12 @@ def run_auto_afk(bot):
                 continue
             bot._log("🖱 Click 'Thử Lại'...")
             if _safeClick(bot, retryHit[0], retryHit[1], rect) and _wait(bot, 2.5):
-                _handlePickTeamInStats(bot, fails)
+                _handlePickTeamInStats(bot, st)
+            continue
+
+        if _findKey(bot, items, "copy_team"):
+            st.markProgress("copy_team")
+            _applyStatsModalTeam(bot, screen, originX, originY, rect, items, st=st)
             continue
 
         closeHit = _findKey(bot, items, "close_btn", exactOnly=True)

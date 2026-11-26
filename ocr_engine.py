@@ -258,7 +258,7 @@ def findNextTeamArrow(image: np.ndarray, originX: int = 0, originY: int = 0, roi
     hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
 
     # Mũi tên '>' màu trắng sáng nằm bên trong vòng tròn xám tím
-    whiteMask = ((hsv[:, :, 1] < 45) & (hsv[:, :, 2] > 215)).astype(np.uint8) * 255
+    whiteMask = ((hsv[:, :, 1] < 55) & (hsv[:, :, 2] > 195)).astype(np.uint8) * 255
     contours, _ = cv2.findContours(whiteMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     for contour in contours:
@@ -281,7 +281,7 @@ def findNextTeamArrow(image: np.ndarray, originX: int = 0, originY: int = 0, roi
             if bgPatch.size == 0:
                 continue
             medianVal = float(np.median(bgPatch[:, :, 2]))
-            if 70 <= medianVal <= 190:
+            if 60 <= medianVal <= 200:
                 return (rx1 + cx + originX, ry1 + cy + originY)
 
     return None
