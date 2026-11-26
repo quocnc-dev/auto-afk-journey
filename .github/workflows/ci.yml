@@ -91,7 +91,9 @@ jobs:
           P12="$RUNNER_TEMP/afk-signing.p12"
           # Bỏ xuống dòng / CR thừa khi dán secret
           CERT_PASS="$(printf '%s' "$MACOS_CERT_PASSWORD" | tr -d '\r\n')"
-          trap 'rm -f "$P12"; security delete-keychain "$KC" 2>/dev/null || true' EXIT
+          PEM="$RUNNER_TEMP/afk-signing.pem"
+          ORIG_KCS="$(security list-keychains -d user | tr -d '"')"
+          trap 'rm -f "$P12" "$PEM"; security list-keychains -d user -s $ORIG_KCS; security delete-keychain "$KC" 2>/dev/null || true' EXIT
 
           echo "==> Giải mã MACOS_CERT_P12"
           if ! printf '%s' "$MACOS_CERT_P12" | tr -d '[:space:]' | base64 --decode > "$P12" || [ ! -s "$P12" ]; then
@@ -104,6 +106,8 @@ jobs:
           security create-keychain -p "$KC_PASS" "$KC"
           security set-keychain-settings -lut 21600 "$KC"
           security unlock-keychain -p "$KC_PASS" "$KC"
+          # codesign trên runner chỉ tìm identity trong các keychain thuộc search list
+          security list-keychains -d user -s "$KC" $ORIG_KCS
 
           echo "==> Import .p12"
           if ! IMPORT_OUT=$(security import "$P12" -k "$KC" -P "$CERT_PASS" -T /usr/bin/codesign 2>&1); then
@@ -125,7 +129,15 @@ jobs:
           fi
 
           echo "==> Ký app"
-          codesign --force --deep --keychain "$KC" -s "$IDENTITY" dist/AFKJourneyBot.app
+          signApp() { codesign --force --deep --keychain "$KC" -s "$IDENTITY" dist/AFKJourneyBot.app; }
+          if ! signApp; then
+            # Chứng chỉ tự tạo chưa được tin cậy -> đánh dấu tin cậy cho Code Signing rồi ký lại
+            echo "==> Đánh dấu tin cậy chứng chỉ cho Code Signing rồi ký lại"
+            security find-certificate -a -p "$KC" > "$PEM"
+            sudo security add-trusted-cert -d -r trustRoot -p codeSign -k "$KC" "$PEM"
+            security find-identity -v -p codesigning "$KC"
+            signApp
+          fi
           codesign --verify --deep --strict dist/AFKJourneyBot.app
           REQ=$(codesign -dr - dist/AFKJourneyBot.app 2>&1)
           echo "$REQ"
