@@ -33,6 +33,7 @@ class TestSafetyAndCI(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.ocr = OcrEngine()
+        cls.tplDir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
 
     def test_imports_and_300_line_limits(self):
         for mod in [window_manager, vision, controller, bot_engine, main, ui_layout, ui_tabs, auto_afk]:
