@@ -15,7 +15,7 @@ import customtkinter as ctk
 import config
 from bot_engine import BotEngine, State
 from ui_layout import buildMainArea, buildSidebar
-from ui_tabs import COLORS, refreshTemplateList, runPreviewWorker
+from ui_tabs import COLORS, runPreviewWorker
 from ui_updater import checkUpdateAsync
 
 # ──────────────────────────────────────────────────────────
@@ -77,7 +77,6 @@ class AFKBotApp(ctk.CTk):
         if self._is_running or self.bot.is_running():
             return
         self.bot.task_auto_afk = self.var_auto_afk.get()
-        self.bot.matcher.threshold = self.threshold_var.get()
 
         if not self.bot.task_auto_afk:
             messagebox.showwarning("Cảnh báo", "Hãy chọn nhiệm vụ Auto AFK!")
@@ -150,9 +149,6 @@ class AFKBotApp(ctk.CTk):
                 f.write("\n".join(self._log_lines))
             messagebox.showinfo("Đã lưu", f"Log đã lưu tại:\n{path}")
 
-    def _on_threshold_change(self, value):
-        self.threshold_lbl.configure(text=f"{float(value):.0%}")
-
     def _toggle_preview(self):
         if self._preview_active:
             self._preview_active = False
@@ -192,25 +188,13 @@ class AFKBotApp(ctk.CTk):
         else:
             subprocess.Popen(["xdg-open", path])
 
-    def _open_templates_dir(self):
-        os.makedirs(config.TEMPLATES_DIR, exist_ok=True)
-        self._open_path(config.TEMPLATES_DIR)
-
     def _open_log_dir(self):
         logDir = os.path.dirname(config.LOG_FILE)
         os.makedirs(logDir, exist_ok=True)
         self._open_path(logDir)
 
-    def _open_template_manager(self):
-        self.tab_view.set("🗺 Template")
-
     def _on_check_update(self):
         checkUpdateAsync(self, silent=False)
-
-    def _reload_templates(self):
-        self.bot.matcher.reload_cache()
-        refreshTemplateList(self)
-        self._on_log("[GUI] Đã reload templates")
 
     def _update_timer(self):
         if not self._is_running:
@@ -247,7 +231,6 @@ class AFKBotApp(ctk.CTk):
 
 
 def main():
-    os.makedirs(config.TEMPLATES_DIR, exist_ok=True)
     os.makedirs(os.path.dirname(config.LOG_FILE), exist_ok=True)
     app = AFKBotApp()
     app.mainloop()

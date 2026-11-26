@@ -94,6 +94,26 @@ class TestModeFallback(unittest.TestCase):
         self.assertEqual(clicks[-1], (510, 800))
         self.assertIsNone(auto_afk._findKey(MockBot(self.ocr, []), autoBattleScene, "close_btn", exactOnly=True))
 
+    def test_main_screen_never_clicks_bottom_nav_and_clicks_bottom_left_peak(self):
+        mainScreenItems = [
+            _ocrItem("Cẩm Nang Mùa Giải", 120, 60),
+            _ocrItem("Ngôi Nhà Huyền Bí", 215, 900),
+            _ocrItem("Chế Độ", 310, 890),
+            _ocrItem("Chiến Đấu", 310, 912),
+            _ocrItem("Hội Trường", 390, 890),
+            _ocrItem("Cộng Hưởng", 390, 912),
+            _ocrItem("Bang Hội", 465, 900),
+            _ocrItem("Trang Viên", 640, 795),
+            _ocrItem("Màn Chơi Đỉnh Cao", 52, 888, w=90, h=14),
+            _ocrItem("785", 52, 912, w=50, h=20),
+        ]
+        clicks = self._runWithScenes([mainScreenItems])
+        self.assertEqual(clicks, [(52, 888)])
+
+        # Kể cả khi OCR bỏ sót chữ nhỏ 'Màn Chơi Đỉnh Cao', tuyệt đối không click Ngôi Nhà / Chế Độ / Hội Trường
+        noCornerText = mainScreenItems[:-2]
+        self.assertEqual(self._runWithScenes([noCornerText]), [])
+
 
 if __name__ == "__main__":
     unittest.main()

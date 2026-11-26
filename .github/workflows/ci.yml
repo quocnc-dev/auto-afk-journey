@@ -69,7 +69,6 @@ jobs:
             --collect-all rapidocr_onnxruntime \
             --collect-all customtkinter \
             --collect-data certifi \
-            --add-data "templates${{ matrix.add_data_sep }}templates" \
             --add-data "build_info.json${{ matrix.add_data_sep }}." \
             main.py
 

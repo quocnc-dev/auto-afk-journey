@@ -274,8 +274,3 @@ class Controller:
         except Exception as e:
             logger.error(f"Lỗi drag từ ({x1}, {y1}) đến ({x2}, {y2}): {e}")
             return False
-
-    def click_template_result(self, result: tuple, delay: float = None, stop_event=None, guard_fn=None):
-        """Click vào kết quả từ ImageMatcher.find()"""
-        if result and len(result) >= 2:
-            self.click(result[0], result[1], delay=delay, stop_event=stop_event, guard_fn=guard_fn)

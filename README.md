@@ -7,11 +7,11 @@ Bot tự động vượt ải AFK Journey trên **Windows** và **macOS (Apple S
 ```text
 auto-afk-journey/
 ├── main.py              # Giao diện chính (CustomTkinter)
-├── ui_tabs.py           # Các tab Log / Preview / Template
+├── ui_tabs.py           # Các tab Log / Preview
 ├── bot_engine.py        # State Machine điều phối bot
 ├── window_manager.py    # Bắt cửa sổ game đa nền tảng (pywin32 / Quartz)
 ├── ocr_engine.py        # Nhận diện chữ OCR, checkbox & mũi tên
-├── vision.py            # Chụp màn hình cửa sổ game & template fallback
+├── vision.py            # Chụp màn hình cửa sổ game
 ├── controller.py        # Chuột/bàn phím (Virtual Desktop Windows / macOS)
 ├── config.py            # Cấu hình từ khóa OCR, ngưỡng, ROI
 ├── modules/
@@ -48,9 +48,8 @@ Workflow [ci.yml](.github/workflows/ci.yml) tự động build và phát hành 2
 ## 🔄 State Machine
 
 ```text
-IDLE → LAUNCH_GAME → CHECK_POPUP → AUTO_AFK → DONE / ERROR
+IDLE → LAUNCH_GAME → AUTO_AFK → DONE / ERROR
 ```
 
 ## ⚠️ Lưu ý
 - Giữ cửa sổ `"AFK Journey"` hiển thị (không bị thu nhỏ hoặc che khuất); nếu mất cửa sổ game, bot sẽ tự tạm dừng và không click ra ngoài ứng dụng khác.
-- Có thể dùng `capture_template.py` để thêm ảnh popup quảng cáo (`popup_close.png`, `btn_close.png`) vào `templates/` làm fallback tùy chọn.

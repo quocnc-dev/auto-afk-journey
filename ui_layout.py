@@ -7,7 +7,7 @@ import customtkinter as ctk
 
 import config
 import updater
-from ui_tabs import COLORS, buildLogTab, buildPreviewTab, buildTemplateTab
+from ui_tabs import COLORS, buildLogTab, buildPreviewTab
 
 
 def buildSidebar(app):
@@ -54,37 +54,7 @@ def buildSidebar(app):
         checkmark_color="#FFFFFF",
     ).grid(row=4, column=0, padx=16, pady=4, sticky="w")
 
-    ctk.CTkFrame(sidebar, height=1, fg_color=COLORS["border"]).grid(row=11, column=0, sticky="ew", padx=12, pady=8)
-    ctk.CTkLabel(
-        sidebar, text="NGƯỠNG NHẬN DIỆN", font=ctk.CTkFont(size=10, weight="bold"), text_color=COLORS["text_muted"]
-    ).grid(row=12, column=0, padx=16, pady=(0, 4), sticky="w")
-    app.threshold_var = ctk.DoubleVar(value=config.MATCH_THRESHOLD)
-    app.threshold_lbl = ctk.CTkLabel(
-        sidebar, text=f"{config.MATCH_THRESHOLD:.0%}", font=ctk.CTkFont(size=12), text_color=COLORS["accent"]
-    )
-    app.threshold_lbl.grid(row=13, column=0, padx=16, pady=(0, 2), sticky="w")
-    ctk.CTkSlider(
-        sidebar,
-        from_=0.5,
-        to=1.0,
-        variable=app.threshold_var,
-        command=app._on_threshold_change,
-        fg_color=COLORS["border"],
-        progress_color=COLORS["accent"],
-        button_color=COLORS["accent"],
-        button_hover_color=COLORS["accent2"],
-    ).grid(row=14, column=0, padx=14, pady=(0, 12), sticky="ew")
-
-    ctk.CTkFrame(sidebar, height=1, fg_color=COLORS["border"]).grid(row=15, column=0, sticky="ew", padx=12, pady=0)
-    ctk.CTkButton(
-        sidebar,
-        text="🖼  Quản lý Template",
-        fg_color="transparent",
-        hover_color=COLORS["bg_card2"],
-        text_color=COLORS["text_muted"],
-        anchor="w",
-        command=app._open_template_manager,
-    ).grid(row=16, column=0, padx=8, pady=(8, 2), sticky="ew")
+    ctk.CTkFrame(sidebar, height=1, fg_color=COLORS["border"]).grid(row=15, column=0, sticky="ew", padx=12, pady=8)
     ctk.CTkButton(
         sidebar,
         text="📁  Mở thư mục log",
@@ -179,10 +149,8 @@ def buildMainArea(app):
     app.tab_view.grid(row=2, column=0, padx=16, pady=(0, 16), sticky="nsew")
     app.tab_view.add("📋 Log")
     app.tab_view.add("🖥 Preview")
-    app.tab_view.add("🗺 Template")
     buildLogTab(app, app.tab_view.tab("📋 Log"))
     buildPreviewTab(app, app.tab_view.tab("🖥 Preview"))
-    buildTemplateTab(app, app.tab_view.tab("🗺 Template"))
 
 
 def _makeStatCard(parent, label, value, accent):

@@ -22,7 +22,6 @@ if errorlevel 1 (
 
 echo.
 echo [3/3] Tao thu muc can thiet...
-if not exist "templates" mkdir templates
 if not exist "logs" mkdir logs
 
 echo.

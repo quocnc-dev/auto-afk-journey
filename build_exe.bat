@@ -27,7 +27,7 @@ echo.
 echo [*] Dang tien hanh dong goi ung dung (kem model RapidOCR + CustomTkinter)...
 echo.
 
-python -m PyInstaller --noconfirm --onedir --windowed --name "AFKJourneyBot" --collect-all rapidocr_onnxruntime --collect-all customtkinter --collect-data certifi --add-data "templates;templates" main.py
+python -m PyInstaller --noconfirm --onedir --windowed --name "AFKJourneyBot" --collect-all rapidocr_onnxruntime --collect-all customtkinter --collect-data certifi main.py
 
 if %errorlevel% neq 0 (
     echo.

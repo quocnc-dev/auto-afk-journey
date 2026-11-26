@@ -8,6 +8,8 @@ import re
 import time
 from dataclasses import dataclass, field
 
+import cv2
+
 import config
 
 
@@ -116,7 +118,34 @@ def findAutoProgressState(bot, items, findKeyFn) -> tuple[bool, int, int] | None
 
 def findInBattleAuto(bot, items, findKeyFn):
     """Nhận diện thanh trạng thái 'Tự Động Chiến Đấu...' khi đang đánh trận để bot đứng đợi."""
-    return findKeyFn(bot, items, "in_battle_auto")
+    return findKeyFn(bot, items, "in_battle_auto", extraExcludes=config.IN_BATTLE_EXTRA_EXCLUDES)
+
+
+def isMainOverworldScreen(bot, items, findKeyFn) -> bool:
+    """Kiểm tra có đang ở màn hình chính (có thanh điều hướng sảnh chính) để không click nhầm sang trận."""
+    return findKeyFn(bot, items, "main_world_nav") is not None
+
+
+def _scanCornerUpscaled(bot, screen, originX: int, originY: int, roi: tuple[float, float, float, float], findKeyFn):
+    """Phóng to 2x vùng góc dưới khi chữ 'Màn Chơi Đỉnh Cao' quá nhỏ khiến OCR 1x bỏ sót."""
+    if screen is None or not hasattr(cv2, "resize") or getattr(screen, "ndim", 0) != 3:
+        return None
+    imgH, imgW = screen.shape[:2]
+    x1, y1 = max(0, int(imgW * roi[0])), max(0, int(imgH * roi[1]))
+    x2, y2 = min(imgW, int(imgW * roi[2])), min(imgH, int(imgH * roi[3]))
+    if x2 <= x1 or y2 <= y1:
+        return None
+    crop = screen[y1:y2, x1:x2]
+    upscaled = cv2.resize(crop, (0, 0), fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+    upItems = bot.ocr.scanImage(upscaled, originX=0, originY=0)
+    exclude = ["victory", "auto_battle_complete"]
+    hit = findKeyFn(bot, upItems, "afk_icon", excludeKeys=exclude, exactOnly=True) or findKeyFn(
+        bot, upItems, "peak_stage_icon", excludeKeys=exclude, wholePhrase=True
+    )
+    if not hit:
+        return None
+    cx, cy, score, item = hit
+    return (originX + x1 + cx // 2, originY + y1 + cy // 2, score, item)
 
 
 def detectPassiveWaitState(bot, items, findKeyFn, autoProgress=None) -> tuple[str, str, bool] | None:
@@ -160,5 +189,8 @@ def findMainLobbyEntry(bot, screen, originX: int, originY: int, rect, items, fin
         peakHit = findKeyFn(bot, cornerItems, "peak_stage_icon", excludeKeys=exclude, wholePhrase=True)
         if peakHit:
             return peakHit
+        upHit = _scanCornerUpscaled(bot, screen, originX, originY, roi, findKeyFn)
+        if upHit:
+            return upHit
 
     return None

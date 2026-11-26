@@ -10,7 +10,6 @@ import cv2
 import numpy as np
 
 import bot_engine
-import capture_template
 import config
 import controller
 import main
@@ -34,7 +33,6 @@ class TestSafetyAndCI(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.ocr = OcrEngine()
-        cls.tplDir = config.TEMPLATES_DIR
 
     def test_imports_and_300_line_limits(self):
         for mod in [window_manager, vision, controller, bot_engine, main, ui_layout, ui_tabs, auto_afk]:
@@ -43,13 +41,14 @@ class TestSafetyAndCI(unittest.TestCase):
         for rel in [
             "config.py", "window_manager.py", "ocr_engine.py", "vision.py",
             "controller.py", "bot_engine.py", "main.py", "ui_layout.py", "ui_tabs.py",
-            "capture_template.py", "modules/auto_afk.py",
-            "tests/test_ocr_and_logic.py", "tests/test_safety_and_ci.py", "tests/test_p1_p2_fixes.py",
+            "updater.py", "ui_updater.py", "modules/auto_afk.py", "modules/afk_detectors.py",
+            "tests/test_ocr_and_logic.py", "tests/test_safety_and_ci.py",
+            "tests/test_p1_p2_fixes.py", "tests/test_mode_fallback.py", "tests/test_updater.py",
         ]:
             with open(os.path.join(root, rel), encoding="utf-8") as f:
                 self.assertLessEqual(len(f.readlines()), 300, f"{rel} vượt 300 dòng")
 
-    def test_no_false_positives_and_flat_template(self):
+    def test_no_false_positives(self):
         items = [_makeItem("Battle Records"), _makeItem("Cập nhật hoàn tất", 200, 300)]
         fightEx = [w for k in config.FIGHT_EXCLUDE_KEYS for w in config.OCR_KEYWORDS[k]] + config.FIGHT_EXTRA_EXCLUDES
         self.assertIsNone(
@@ -58,11 +57,6 @@ class TestSafetyAndCI(unittest.TestCase):
         self.assertIsNone(
             self.ocr.findText(items, config.OCR_KEYWORDS["auto_battle_complete"], excludeKeywords=config.FIGHT_EXTRA_EXCLUDES)
         )
-
-        flatScreen = np.full((300, 300, 3), 120, dtype=np.uint8)
-        matcher = vision.ImageMatcher(self.tplDir, 0.80)
-        if os.path.exists(os.path.join(self.tplDir, "btn_retry.png")):
-            self.assertIsNone(matcher.find(flatScreen, "btn_retry"))
 
     def test_virtual_desktop_secondary_monitor_mapping(self):
         self.assertEqual(controller.toVirtualDesktopCoords(-1920, 0, -1920, 0, 3840, 1080), (0, 0))
@@ -162,7 +156,7 @@ class TestSafetyAndCI(unittest.TestCase):
         finally:
             bot_engine.run_auto_afk = origRun
 
-    def test_test_click_import_safe_and_template_sanitize(self):
+    def test_test_click_import_safe(self):
         fakeMod = types.SimpleNamespace(
             click=lambda *a, **kw: (_ for _ in ()).throw(AssertionError("click called on import")),
             moveTo=lambda *a, **kw: (_ for _ in ()).throw(AssertionError("moveTo called on import")),
@@ -175,9 +169,6 @@ class TestSafetyAndCI(unittest.TestCase):
         finally:
             if orig is not None:
                 sys.modules["pydirectinput"] = orig
-
-        self.assertEqual(capture_template.sanitizeTemplateName("../../evil.png"), "evil")
-        self.assertEqual(capture_template.sanitizeTemplateName("btn close!"), "btn_close")
 
 
 if __name__ == "__main__":

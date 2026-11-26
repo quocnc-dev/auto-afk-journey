@@ -27,18 +27,10 @@ def _resolveLogDir() -> str:
 # ========================
 GAME_WINDOW_TITLE = "AFK Journey"       # Tiêu đề cửa sổ game (dùng để tìm window)
 
-
 # ========================
-#  TEMPLATE IMAGES (fallback tùy chọn)
+#  THÔNG SỐ NHẬN DIỆN OCR & HSV
 # ========================
-TEMPLATES_DIR = os.path.join(BUNDLE_DIR, "templates")
-
-# ========================
-#  THÔNG SỐ NHẬN DIỆN ẢNH & OCR
-# ========================
-MATCH_THRESHOLD = 0.80              # Ngưỡng confidence cho template fallback (0.0 - 1.0)
 OCR_FUZZY_THRESHOLD = 0.75          # Ngưỡng khớp mờ cho OCR tiếng Việt/Anh
-SCAN_INTERVAL = 0.5                 # Giây giữa mỗi lần quét màn hình
 
 # Ngưỡng HSV nhận diện checkbox đã tick (màu xanh lá)
 CHECKBOX_GREEN_HSV_LOW = (35, 40, 60)
@@ -49,7 +41,6 @@ CHECKBOX_GREEN_MIN_RATIO = 0.12
 #  TỪ KHÓA & VÙNG ROI (tỷ lệ 0.0 -> 1.0 theo cửa sổ game)
 # ========================
 # Format ROI: (xMinRatio, yMinRatio, xMaxRatio, yMaxRatio)
-ROI_FULL_WINDOW = (0.0, 0.0, 1.0, 1.0)
 ROI_NEXT_TEAM_AREA = (0.60, 0.20, 0.99, 0.80)
 ROI_AFK_CORNER = (0.55, 0.65, 1.0, 1.0)
 ROI_AFK_CORNER_LEFT = (0.0, 0.78, 0.35, 1.0)
@@ -70,10 +61,11 @@ OCR_KEYWORDS = {
     "copy_team": ["sao chep", "copy"],
     "auto_battle_complete": ["tu dong hoan", "tu dong hoan tat", "auto battle complete"],
     "close_btn": ["dong", "close"],
-    "auto_battle": ["tu dong", "tudong", "auto battle"],
+    "auto_battle": ["tu dong", "chien dau tu dong", "tudong", "auto battle"],
     "auto_progress": ["tu dong xu ly", "auto progress"],
     "auto_progress_part": ["xu ly"],
     "in_battle_auto": ["tu dong chien dau", "auto battling"],
+    "main_world_nav": ["ngoi nha huyen bi", "bang hoi", "trang vien", "cam nang mua giai"],
     "challenge_hl": ["huyen linh", "huyen linh sv", "thach dau huyen linh"],
     "fight": ["chien dau", "battle"],
     "afk_icon": ["afk"],
@@ -84,15 +76,13 @@ OCR_KEYWORDS = {
 
 # Từ khóa loại trừ khi tìm nút Chiến Đấu thường và nút Tự Động
 FIGHT_EXCLUDE_KEYS = ["auto_battle", "auto_battle_complete", "challenge_hl", "stats", "in_battle_auto"]
-# FIGHT_EXTRA_EXCLUDES = ["cap nhat", "update"]
 FIGHT_EXTRA_EXCLUDES = ["cap nhat", "update", "che do"]
 AUTO_BATTLE_EXCLUDE_KEYS = ["auto_battle_complete", "auto_progress", "in_battle_auto"]
-# AUTO_BATTLE_EXTRA_EXCLUDES = ["xu ly", "xong"]  # "xong" khop mo 0.75 voi "dong" trong "Tu Dong"
 AUTO_BATTLE_EXTRA_EXCLUDES = []
-CHALLENGE_HL_EXTRA_EXCLUDES = ["man choi", "dinh cao", "sinh vat"]
+CHALLENGE_HL_EXTRA_EXCLUDES = ["man choi", "dinh cao", "sinh vat", "ngoi nha", "ngoi nha huyen bi"]
+IN_BATTLE_EXTRA_EXCLUDES = ["che do"]
 
 # Tỷ lệ dịch chuyển tương đối (theo kích thước cửa sổ hoặc chiều cao chữ)
-DEFEAT_BACK_OFFSET_X_RATIO = -0.18
 DEFEAT_BACK_HEIGHT_MULT = -3.2      # Dịch trái theo chiều cao chữ 'Thử Lại' (hỗ trợ cả màn dọc iPad)
 CHECKBOX_LEFT_HEIGHT_MULT = 1.15    # Tâm checkbox nằm bên trái chữ ~1.15 lần chiều cao dòng chữ
 CHECKBOX_SAMPLE_HEIGHT_MULT = 0.45
@@ -101,7 +91,6 @@ CHECKBOX_SAMPLE_HEIGHT_MULT = 0.45
 #  TIMEOUT
 # ========================
 TIMEOUT_WAIT_SCREEN = 30            # Giây tối đa chờ màn hình chuyển
-TIMEOUT_BATTLE = 180                # Giây tối đa cho 1 trận đấu Arena/Guild Boss
 
 # ========================
 #  LOG
@@ -113,8 +102,6 @@ MAX_LOG_LINES = 500                # Số dòng log tối đa hiển thị trên
 #  DELAY (giây)
 # ========================
 DELAY_AFTER_CLICK = 0.5
-DELAY_AFTER_SCREEN_CHANGE = 1.5
-DELAY_SHORT = 0.3
 MAC_CLICK_HOLD_SECONDS = 0.06       # Thời gian giữ chuột (giây) để game macOS/iPadOS nhận click
 
 # ========================

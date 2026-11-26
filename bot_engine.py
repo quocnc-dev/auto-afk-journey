@@ -4,7 +4,6 @@ State Machine - Logic bot AFK Journey
 Các State:
   IDLE          -> Chờ lệnh từ UI
   LAUNCH_GAME   -> Tìm cửa sổ game đang chạy và đang foreground
-  CHECK_POPUP   -> Kiểm tra và đóng popup quảng cáo (nếu có)
   AUTO_AFK      -> Chạy luồng Auto AFK bằng OCR + Neo tọa độ
   DONE          -> Hoàn thành tất cả task, về IDLE
   ERROR         -> Gặp lỗi hoặc timeout, dừng bot
@@ -17,7 +16,7 @@ from enum import Enum, auto
 from typing import Callable
 
 import config
-from vision import ScreenCapture, ImageMatcher
+from vision import ScreenCapture
 from controller import Controller
 from ocr_engine import OcrEngine
 from window_manager import (
@@ -38,7 +37,6 @@ logger = logging.getLogger("AFK_Bot")
 class State(Enum):
     IDLE = auto()
     LAUNCH_GAME = auto()
-    CHECK_POPUP = auto()
     AUTO_AFK = auto()
     DONE = auto()
     ERROR = auto()
@@ -56,7 +54,6 @@ class BotEngine:
         prompt_callback: Callable[[str, str], None] = None,
     ):
         self.capture = ScreenCapture()
-        self.matcher = ImageMatcher(config.TEMPLATES_DIR, config.MATCH_THRESHOLD)
         self.ocr = OcrEngine(config.OCR_FUZZY_THRESHOLD)
         self.ctrl = Controller(delay_after_click=config.DELAY_AFTER_CLICK)
 
@@ -129,8 +126,6 @@ class BotEngine:
             while not self._stop_event.is_set():
                 if self.state == State.LAUNCH_GAME:
                     self._state_launch_game()
-                elif self.state == State.CHECK_POPUP:
-                    self._state_check_popup()
                 elif self.state == State.AUTO_AFK:
                     self._state_auto_afk()
                 elif self.state == State.DONE:
@@ -178,7 +173,7 @@ class BotEngine:
                         self._stop_event.wait(3.0)
                     return
                 self._log(f"✅ Đã bắt được cửa sổ '{config.GAME_WINDOW_TITLE}' ({rect[2]}x{rect[3]}), tiếp tục...")
-                self.state = State.CHECK_POPUP
+                self.state = State.AUTO_AFK if self.task_auto_afk else State.DONE
                 return
 
         # Game chưa mở hoặc hệ điều hành từ chối đưa lên foreground → báo người dùng
@@ -196,50 +191,6 @@ class BotEngine:
             self._stop_event.wait(3.0)
 
         self._log("🔄 Đang kiểm tra lại cửa sổ game...")
-
-    def _clickPopupTarget(self, label: str, tx: int, ty: int, expectedRect):
-        """Click đóng popup có kiểm tra stop_event và guard_fn ngay tại thời điểm bấm."""
-        self._log(f"🗑️ Đóng popup '{label}' tại ({tx},{ty})")
-        return self.ctrl.click(
-            tx,
-            ty,
-            delay=config.DELAY_AFTER_CLICK,
-            stop_event=self._stop_event,
-            guard_fn=lambda: self.canInteractAt(tx, ty, expectedRect=expectedRect),
-        )
-
-    def _state_check_popup(self):
-        """Đóng các popup quảng cáo nếu có (chỉ thao tác khi cửa sổ game hợp lệ)."""
-        self._log("🔍 Kiểm tra popup quảng cáo...")
-        screen, originX, originY, rect = self.captureGameScreen()
-        if screen is None:
-            self._log("⚠️ Mất cửa sổ game khi kiểm tra popup, quay lại tìm cửa sổ...")
-            self.state = State.LAUNCH_GAME
-            return
-
-        popupTemplates = ["popup_close", "popup_x", "btn_close", "btn_cancel"]
-        result = self.matcher.find_any(screen, popupTemplates)
-
-        if result and not self._stop_event.is_set():
-            name, cx, cy, _ = result
-            if self._clickPopupTarget(name, cx + originX, cy + originY, rect):
-                if self._stop_event.wait(0.5):
-                    return
-                screen2, ox2, oy2, rect2 = self.captureGameScreen()
-                if screen2 is not None and not self._stop_event.is_set():
-                    result2 = self.matcher.find_any(screen2, popupTemplates)
-                    if result2:
-                        name2, cx2, cy2, _ = result2
-                        self._clickPopupTarget(name2, cx2 + ox2, cy2 + oy2, rect2)
-        else:
-            self._log("✅ Không có popup")
-
-        if self._stop_event.is_set():
-            self.state = State.IDLE
-        elif self.task_auto_afk:
-            self.state = State.AUTO_AFK
-        else:
-            self.state = State.DONE
 
     def _state_auto_afk(self):
         """Chạy nhánh nhiệm vụ Auto AFK và cập nhật trạng thái DONE/IDLE/ERROR chính xác."""

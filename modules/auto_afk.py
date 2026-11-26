@@ -7,7 +7,7 @@ import time
 import logging
 
 import config
-from modules.afk_detectors import AfkLoopState, detectPassiveWaitState, findAutoProgressState, findMainLobbyEntry
+from modules.afk_detectors import AfkLoopState, detectPassiveWaitState, findAutoProgressState, findMainLobbyEntry, isMainOverworldScreen
 from ocr_engine import inspectCheckboxByText, findNextTeamArrow
 
 logger = logging.getLogger("AFK_Bot.AutoAFK")
@@ -81,15 +81,10 @@ def _handleDefeatSwitchMode(bot, screen, originX: int, originY: int, rect, items
         bot._log("🖱 Click nút 'Back' (OCR)...")
         _safeClick(bot, backHit[0], backHit[1], rect)
     else:
-        tplBack = bot.matcher.find(screen, "btn_afk_back_from_defeat")
-        if tplBack:
-            bot._log("🖱 Click nút 'Back' (fallback)...")
-            _safeClick(bot, tplBack[0] + originX, tplBack[1] + originY, rect)
-        else:
-            retryItem = retryHit[3]
-            backX = max(originX + 10, retryItem.x1 + int(retryItem.height * config.DEFEAT_BACK_HEIGHT_MULT))
-            bot._log(f"🖱 Click tọa độ nút Back tương đối ({backX}, {retryHit[1]})...")
-            _safeClick(bot, backX, retryHit[1], rect)
+        retryItem = retryHit[3]
+        backX = max(originX + 10, retryItem.x1 + int(retryItem.height * config.DEFEAT_BACK_HEIGHT_MULT))
+        bot._log(f"🖱 Click tọa độ nút Back tương đối ({backX}, {retryHit[1]})...")
+        _safeClick(bot, backX, retryHit[1], rect)
     _wait(bot, 2.5)
     return newPrefer
 
@@ -125,10 +120,6 @@ def _handlePickTeamInStats(bot, failedAttempts: int):
     teamMoves = max(0, failedAttempts - 1)
     if teamMoves > 0:
         nextArrow = findNextTeamArrow(statsScreen, ox, oy)
-        if not nextArrow:
-            tplNext = bot.matcher.find(statsScreen, "btn_afk_next_team")
-            if tplNext:
-                nextArrow = (tplNext[0] + ox, tplNext[1] + oy)
         if nextArrow:
             bot._log(f"🖱 Click chuyển sang Team tiếp theo ({teamMoves} lần)...")
             for _ in range(teamMoves):
@@ -247,33 +238,36 @@ def run_auto_afk(bot):
             _wait(bot, config.AUTO_PROGRESS_POLL_INTERVAL)
             continue
 
-        autoHit = _findKey(bot, items, "auto_battle", excludeKeys=config.AUTO_BATTLE_EXCLUDE_KEYS, extraExcludes=config.AUTO_BATTLE_EXTRA_EXCLUDES)
-        if autoHit:
-            st.markProgress("auto_battle")
-            st.onEnterBattle()
-            bot._log("🖱 Click 'Chiến Đấu Tự Động'...")
-            _safeClick(bot, autoHit[0], autoHit[1], rect)
-            _wait(bot, 3.0)
-            continue
+        if not isMainOverworldScreen(bot, items, _findKey):
+            autoHit = _findKey(
+                bot, items, "auto_battle",
+                excludeKeys=config.AUTO_BATTLE_EXCLUDE_KEYS, extraExcludes=config.AUTO_BATTLE_EXTRA_EXCLUDES, wholePhrase=True,
+            )
+            if autoHit:
+                st.markProgress("auto_battle")
+                st.onEnterBattle()
+                bot._log("🖱 Click 'Chiến Đấu Tự Động'...")
+                _safeClick(bot, autoHit[0], autoHit[1], rect)
+                _wait(bot, 3.0)
+                continue
 
-        st.resolveLobbySwitch(bot, FAIL_THRESHOLD_TO_SWITCH_MODE)
-        if _tryClickStageOption(bot, items, rect, st.preferChallenge):
-            st.defeatCounted = False
-            st.lobbyClicksSameMode += 1
-            st.markProgress("stage_option")
-            continue
+            st.resolveLobbySwitch(bot, FAIL_THRESHOLD_TO_SWITCH_MODE)
+            if _tryClickStageOption(bot, items, rect, st.preferChallenge):
+                st.defeatCounted = False
+                st.lobbyClicksSameMode += 1
+                st.markProgress("stage_option")
+                continue
 
-        victoryHit = _findKey(bot, items, "victory")
-        if victoryHit:
-            bot._log("🎉 Phát hiện màn hình CHIẾN THẮNG! Click tiếp tục...")
-            h, w = screen.shape[:2]
-            _safeClick(bot, originX + int(w * 0.5), originY + int(h * 0.5), rect)
-            st.onVictory()
-            st.markProgress("victory")
-            _wait(bot, 3.0)
-            continue
+            victoryHit = _findKey(bot, items, "victory")
+            if victoryHit:
+                bot._log("🎉 Phát hiện màn hình CHIẾN THẮNG! Click tiếp tục...")
+                h, w = screen.shape[:2]
+                _safeClick(bot, originX + int(w * 0.5), originY + int(h * 0.5), rect)
+                st.onVictory()
+                st.markProgress("victory")
+                _wait(bot, 3.0)
+                continue
 
-        # Logic cũ quét góc afk_icon đã chuyển sang findMainLobbyEntry (modules/afk_detectors.py)
         afkHit = findMainLobbyEntry(bot, screen, originX, originY, rect, items, _findKey)
         if afkHit:
             st.markProgress("afk_icon")

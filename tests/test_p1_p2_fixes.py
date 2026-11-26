@@ -30,7 +30,7 @@ class TestP1P2Fixes(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.ocr = OcrEngine()
-        cls.tplDir = config.TEMPLATES_DIR
+        cls.tplDir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
 
     def test_exact_window_title_and_rect_shift_guard(self):
         self.assertFalse(window_manager.isExactGameTitle("AFK Journey guide - Mozilla Firefox", "AFK Journey"))
@@ -104,51 +104,8 @@ class TestP1P2Fixes(unittest.TestCase):
                 origSleep,
             )
 
-    def test_popup_stop_after_move_and_escape_without_focus(self):
-        # 1. Đóng popup trong _state_check_popup bị Stop sau move -> không click
-        eng = bot_engine.BotEngine()
-        popupClicks = []
-        origFind, origFg, origRect, origCap = (
-            bot_engine.findGameWindow,
-            bot_engine.isWindowForeground,
-            bot_engine.getClientRectScreen,
-            eng.capture.capture_window,
-        )
-        origMove, origSendClick, origSleep = (
-            controller._moveCursor,
-            controller._sendMouseClick,
-            controller._sleepWithStop,
-        )
-        try:
-            bot_engine.findGameWindow = lambda _: 1234
-            bot_engine.isWindowForeground = lambda _: True
-            bot_engine.getClientRectScreen = lambda _: (0, 0, 1280, 720)
-            eng.capture.capture_window = lambda rect: (np.zeros((720, 1280, 3), dtype=np.uint8), 0, 0)
-            eng.matcher.find_any = lambda screen, names: ("popup_close", 600, 300, 0.99)
-            controller._moveCursor = lambda x, y: True
-            controller._sendMouseClick = lambda btn="left": popupClicks.append(btn) or True
-
-            def stopDuring50ms(sec, ev=None):
-                eng._stop_event.set()
-                return False
-
-            controller._sleepWithStop = stopDuring50ms
-            eng._state_check_popup()
-            self.assertEqual(popupClicks, [])
-        finally:
-            bot_engine.findGameWindow, bot_engine.isWindowForeground, bot_engine.getClientRectScreen = (
-                origFind,
-                origFg,
-                origRect,
-            )
-            eng.capture.capture_window = origCap
-            controller._moveCursor, controller._sendMouseClick, controller._sleepWithStop = (
-                origMove,
-                origSendClick,
-                origSleep,
-            )
-
-        # 2. _safeEscape phải hủy ESC nếu game mất focus trong lúc OCR
+    def test_escape_without_focus_blocked(self):
+        # _safeEscape phải hủy ESC nếu game mất focus trong lúc OCR
         bot = MockBot(self.ocr, [])
         bot.canSendKey = lambda: False
         self.assertFalse(auto_afk._safeEscape(bot))

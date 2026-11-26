@@ -38,17 +38,11 @@ class _MockCtrl:
         return True
 
 
-class _MockMatcher:
-    def find(self, screen, name, threshold=None):
-        return None
-
-
 class MockBot:
     """Bot giả lập phát lại chuỗi ảnh màn hình cho unit test."""
 
     def __init__(self, ocr: OcrEngine, frames: list[np.ndarray | None], onClick=None):
         self.ocr = ocr
-        self.matcher = _MockMatcher()
         self.ctrl = _MockCtrl(onClick=onClick)
         self._frames = frames
         self._index = 0
@@ -75,7 +69,7 @@ class TestOcrAndLogic(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.ocr = OcrEngine()
-        cls.tplDir = config.TEMPLATES_DIR
+        cls.tplDir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
 
     def test_normalize_vietnamese(self):
         self.assertEqual(normalizeText("  Chiến   Đấu Tự Động "), "chien dau tu dong")

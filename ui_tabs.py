@@ -1,15 +1,13 @@
 """
-Các tab giao diện (Log, Preview, Template) và bảng màu cho AFK Journey Auto Bot.
+Các tab giao diện (Log, Preview) và bảng màu cho AFK Journey Auto Bot.
 Tách khỏi main.py để mỗi file giữ gọn dưới 300 dòng.
 """
 
-import os
 import threading
 import time
 import customtkinter as ctk
 from PIL import Image
 
-import config
 from vision import ScreenCapture
 
 COLORS = {
@@ -106,107 +104,6 @@ def buildPreviewTab(app, tab):
         corner_radius=8,
     )
     app.preview_label.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
-
-
-def buildTemplateTab(app, tab):
-    """Dựng tab quản lý danh sách template tùy chọn."""
-    tab.grid_rowconfigure(1, weight=1)
-    tab.grid_columnconfigure(0, weight=1)
-    top = ctk.CTkFrame(tab, fg_color="transparent")
-    top.grid(row=0, column=0, padx=8, pady=(8, 4), sticky="ew")
-    ctk.CTkButton(
-        top,
-        text="📂  Mở thư mục Template",
-        height=32,
-        fg_color=COLORS["accent"],
-        hover_color=COLORS["accent2"],
-        command=app._open_templates_dir,
-    ).pack(side="left")
-    ctk.CTkButton(
-        top,
-        text="🔄  Reload",
-        width=80,
-        height=32,
-        fg_color=COLORS["bg_card2"],
-        hover_color=COLORS["border"],
-        text_color=COLORS["text_primary"],
-        command=app._reload_templates,
-    ).pack(side="left", padx=8)
-    ctk.CTkLabel(
-        top,
-        text="Chế độ chính dùng OCR (không cần template); ảnh ở đây chỉ làm fallback tùy chọn",
-        font=ctk.CTkFont(size=11),
-        text_color=COLORS["text_muted"],
-    ).pack(side="left", padx=8)
-    app.template_list_frame = ctk.CTkScrollableFrame(tab, fg_color=COLORS["log_bg"], corner_radius=8)
-    app.template_list_frame.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
-    refreshTemplateList(app)
-
-
-def refreshTemplateList(app):
-    """Cập nhật danh sách template trong thư mục templates/."""
-    for w in app.template_list_frame.winfo_children():
-        w.destroy()
-    os.makedirs(config.TEMPLATES_DIR, exist_ok=True)
-    files = [
-        f for f in os.listdir(config.TEMPLATES_DIR) if f.lower().endswith((".png", ".jpg", ".jpeg"))
-    ]
-    if not files:
-        ctk.CTkLabel(
-            app.template_list_frame,
-            text="Chưa có template nào (bot chạy tự động bằng OCR).",
-            font=ctk.CTkFont(size=12),
-            text_color=COLORS["text_muted"],
-        ).pack(pady=20)
-        return
-
-    header = ctk.CTkFrame(app.template_list_frame, fg_color=COLORS["bg_card2"], corner_radius=6)
-    header.pack(fill="x", padx=4, pady=(4, 0))
-    for colText, colWidth in [("Tên Template", 200), ("Kích thước", 100), ("Trạng thái", 100)]:
-        ctk.CTkLabel(
-            header,
-            text=colText,
-            font=ctk.CTkFont(size=10, weight="bold"),
-            text_color=COLORS["text_muted"],
-            width=colWidth,
-            anchor="w",
-        ).pack(side="left", padx=10, pady=6)
-
-    for fname in sorted(files):
-        fpath = os.path.join(config.TEMPLATES_DIR, fname)
-        try:
-            img = Image.open(fpath)
-            sizeStr = f"{img.width}×{img.height}"
-            status, statusColor = "✅ OK", COLORS["success"]
-        except Exception:
-            sizeStr = "—"
-            status, statusColor = "❌ Lỗi", COLORS["danger"]
-        row = ctk.CTkFrame(app.template_list_frame, fg_color="transparent")
-        row.pack(fill="x", padx=4, pady=1)
-        ctk.CTkLabel(
-            row,
-            text=f"🖼  {fname}",
-            width=200,
-            anchor="w",
-            font=ctk.CTkFont(size=12),
-            text_color=COLORS["text_primary"],
-        ).pack(side="left", padx=10)
-        ctk.CTkLabel(
-            row,
-            text=sizeStr,
-            width=100,
-            anchor="w",
-            font=ctk.CTkFont(size=11),
-            text_color=COLORS["text_muted"],
-        ).pack(side="left")
-        ctk.CTkLabel(
-            row,
-            text=status,
-            width=100,
-            anchor="w",
-            font=ctk.CTkFont(size=11),
-            text_color=statusColor,
-        ).pack(side="left")
 
 
 def runPreviewWorker(app, stopEvent: threading.Event, gen: int):
