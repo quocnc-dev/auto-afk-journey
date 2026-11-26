@@ -42,9 +42,9 @@ class TestSafetyAndCI(unittest.TestCase):
         for rel in [
             "config.py", "window_manager.py", "ocr_engine.py", "vision.py",
             "controller.py", "bot_engine.py", "main.py", "ui_layout.py", "ui_tabs.py",
-            "updater.py", "ui_updater.py", "modules/auto_afk.py", "modules/afk_detectors.py", "modules/debug_snapshot.py",
+            "updater.py", "ui_updater.py", "modules/auto_afk.py", "modules/afk_detectors.py", "modules/debug_snapshot.py", "modules/game_actions.py",
             "tests/test_ocr_and_logic.py", "tests/test_safety_and_ci.py",
-            "tests/test_p1_p2_fixes.py", "tests/test_mode_fallback.py", "tests/test_updater.py", "tests/test_debug_snapshot.py",
+            "tests/test_p1_p2_fixes.py", "tests/test_mode_fallback.py", "tests/test_updater.py", "tests/test_debug_snapshot.py", "tests/test_flow_improvements.py",
         ]:
             with open(os.path.join(root, rel), encoding="utf-8") as f:
                 self.assertLessEqual(len(f.readlines()), 300, f"{rel} vượt 300 dòng")

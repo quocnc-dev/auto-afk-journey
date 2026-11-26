@@ -25,6 +25,7 @@ class AfkLoopState:
     preferChallenge: bool = True
     lastStateKey: str | None = None
     lastProgressTime: float = field(default_factory=time.time)
+    lastDeepScanTime: float = float("-inf")
 
     def markProgress(self, stateKey: str, refreshAlways: bool = False):
         if refreshAlways or self.lastStateKey != stateKey:
@@ -218,8 +219,8 @@ def detectPassiveWaitState(bot, items, findKeyFn, autoProgress=None, rect=None) 
     return None
 
 
-def findMainLobbyEntry(bot, screen, originX: int, originY: int, rect, items, findKeyFn):
-    """Tìm nút vào AFK ở sảnh chính ('AFK' hoặc 'Màn Chơi Đỉnh Cao' ở góc dưới)."""
+def findMainLobbyEntry(bot, screen, originX: int, originY: int, rect, items, findKeyFn, deepScan: bool = True):
+    """Tìm nút vào AFK ở sảnh chính ('AFK' hoặc 'Màn Chơi Đỉnh Cao' ở góc dưới); deepScan=False bỏ qua OCR lại vùng góc."""
     exclude = ["victory", "auto_battle_complete"]
     afkHit = findKeyFn(bot, items, "afk_icon", excludeKeys=exclude, exactOnly=True)
     if afkHit:
@@ -239,6 +240,8 @@ def findMainLobbyEntry(bot, screen, originX: int, originY: int, rect, items, fin
         if peakHit:
             return peakHit
 
+    if not deepScan:
+        return None
     for roi in cornerRois:
         cornerItems = bot.ocr.scanImage(screen, originX=originX, originY=originY, roi=roi)
         afkHit = findKeyFn(bot, cornerItems, "afk_icon", excludeKeys=exclude, exactOnly=True)

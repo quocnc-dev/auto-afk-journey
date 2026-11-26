@@ -77,6 +77,21 @@ OCR_KEYWORDS = {
     "peak_stage_icon": ["man choi dinh cao"],
     "victory": ["da tang phan", "thuong afk", "thurong afk", "victory"],
     "back": ["quay lai", "back"],
+    "defeat": ["that bai", "defeat"],
+}
+
+# Vùng màn hình hợp lệ cho các nút có chữ chung chung ("đóng", "chiến đấu", "tự động"...).
+# Chữ khớp nằm ngoài vùng (vd tiêu đề, banner phía trên) bị bỏ qua để tránh click nhầm.
+# Format như ROI ở trên; xóa 1 dòng để tắt giới hạn cho nút đó.
+ROI_LOWER_SCREEN = (0.0, 0.40, 1.0, 1.0)
+OCR_KEY_ROIS = {
+    "retry": ROI_LOWER_SCREEN,
+    "close_btn": ROI_LOWER_SCREEN,
+    "fight": ROI_LOWER_SCREEN,
+    "challenge_hl": ROI_LOWER_SCREEN,
+    "auto_battle": ROI_LOWER_SCREEN,
+    "copy_team": ROI_LOWER_SCREEN,
+    "stats": ROI_LOWER_SCREEN,
 }
 
 # Từ khóa loại trừ khi tìm nút Chiến Đấu thường và nút Tự Động
@@ -114,6 +129,17 @@ DEBUG_UNKNOWN_STREAK = 8            # Số vòng liên tiếp không nhận ra m
 #  DELAY (giây)
 # ========================
 DELAY_AFTER_CLICK = 0.5
+
+# Chờ màn hình đổi sau click (so sánh khung hình thu nhỏ, không chạy OCR)
+SCREEN_DIFF_SIZE = 96               # Thu nhỏ khung hình về NxN pixel trước khi so
+SCREEN_CHANGE_THRESHOLD = 6.0       # Độ khác trung bình (0..255) coi là đã chuyển màn
+SCREEN_STABLE_THRESHOLD = 2.0       # Dưới mức này giữa 2 lần chụp liên tiếp coi là đã đứng yên
+SCREEN_SETTLE_MIN_WAIT = 0.4        # Chờ tối thiểu trước khi bắt đầu so khung hình
+SCREEN_SETTLE_POLL = 0.3
+
+# Quét OCR sâu (vùng góc + phóng to 2x) tìm nút vào AFK: tốn ~4 lần OCR nên chỉ chạy
+# khi đang ở màn hình chính hoặc cách lần trước ít nhất N giây
+LOBBY_DEEP_SCAN_INTERVAL = 6.0
 MAC_CLICK_HOLD_SECONDS = 0.06       # Thời gian giữ chuột (giây) để game macOS/iPadOS nhận click
 
 # ========================

@@ -6,9 +6,10 @@ import logging
 import config
 from modules.afk_detectors import (
     AfkLoopState, detectPassiveWaitState, findAutoProgressState,
-    findMainLobbyEntry, findPauseAutoConfirmCancel, isMainOverworldScreen,
+    findMainLobbyEntry, findPauseAutoConfirmCancel, isMainOverworldScreen, roiToScreenRect,
 )
 from modules.debug_snapshot import saveSnapshot
+from modules.game_actions import safeClick as _safeClick, safeEscape as _safeEscape, waitForScreenChange
 from ocr_engine import inspectCheckboxByText, findNextTeamArrow
 
 logger = logging.getLogger("AFK_Bot.AutoAFK")
@@ -24,28 +25,9 @@ def _wait(bot, seconds: float) -> bool:
     return not bot._stop_event.wait(seconds)
 
 
-def _safeClick(bot, x: int, y: int, expectedRect=None) -> bool:
-    """Chỉ click khi chưa Stop, cửa sổ game đang foreground và giữ nguyên vị trí đã chụp."""
-    if bot._stop_event.is_set():
-        return False
-    guardFn = (lambda: bot.canInteractAt(x, y, expectedRect=expectedRect)) if hasattr(bot, "canInteractAt") else None
-    if guardFn is not None and not guardFn():
-        bot._log("⚠️ Cửa sổ game đã bị che, dịch chuyển hoặc mất focus — hủy click!")
-        return False
-    res = bot.ctrl.click(x, y, stop_event=bot._stop_event, guard_fn=guardFn)
-    return (res is not False) and not bot._stop_event.is_set()
-
-
-def _safeEscape(bot) -> bool:
-    """Chỉ gửi phím ESC khi chưa Stop và cửa sổ game đang foreground."""
-    if bot._stop_event.is_set():
-        return False
-    guardFn = bot.canSendKey if hasattr(bot, "canSendKey") else None
-    if guardFn is not None and not guardFn():
-        bot._log("⚠️ Mất focus cửa sổ game — hủy gửi phím ESC!")
-        return False
-    res = bot.ctrl.press_escape(stop_event=bot._stop_event, guard_fn=guardFn)
-    return (res is not False) and not bot._stop_event.is_set()
+def _settle(bot, prevScreen, seconds: float) -> bool:
+    """Sau click: chờ màn hình đổi rồi đứng yên (tối đa `seconds`), thay cho ngủ cố định."""
+    return waitForScreenChange(bot, prevScreen, seconds, _wait)
 
 
 def _scanGame(bot):
@@ -55,6 +37,7 @@ def _scanGame(bot):
     screen, originX, originY, rect = bot.captureGameScreen()
     if screen is None:
         return None, 0, 0, None, []
+    bot._scanRect = rect
     items = bot.ocr.scanImage(screen, originX=originX, originY=originY)
     return screen, originX, originY, rect, items
 
@@ -66,7 +49,10 @@ def _findKey(bot, items, keyName: str, excludeKeys=None, extraExcludes=None, exa
     if excludeKeys:
         for exKey in excludeKeys:
             excludeWords.extend(config.OCR_KEYWORDS.get(exKey, []))
-    return bot.ocr.findText(items, keywords, excludeKeywords=excludeWords or None, exactOnly=exactOnly, wholePhrase=wholePhrase)
+    keyRoi = config.OCR_KEY_ROIS.get(keyName)
+    roiRect = roiToScreenRect(getattr(bot, "_scanRect", None), keyRoi) if keyRoi else None
+    return bot.ocr.findText(items, keywords, excludeKeywords=excludeWords or None, roiScreenRect=roiRect,
+                            exactOnly=exactOnly, wholePhrase=wholePhrase)
 
 
 def _handleDefeatSwitchMode(bot, screen, originX: int, originY: int, rect, items, retryHit, preferChallenge: bool) -> bool:
@@ -84,7 +70,7 @@ def _handleDefeatSwitchMode(bot, screen, originX: int, originY: int, rect, items
         backX = max(originX + 10, retryItem.x1 + int(retryItem.height * config.DEFEAT_BACK_HEIGHT_MULT))
         bot._log(f"🖱 Click tọa độ nút Back tương đối ({backX}, {retryHit[1]})...")
         _safeClick(bot, backX, retryHit[1], rect)
-    _wait(bot, 2.5)
+    _settle(bot, screen, 2.5)
     return newPrefer
 
 
@@ -95,7 +81,7 @@ def _applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsIte
         isChecked, cbX, cbY = inspectCheckboxByText(statsScreen, ownedHit[3], ox, oy)
         if not isChecked:
             bot._log("🖱 Tích chọn ô 'Chỉ hiển thị đội hình đã sở hữu'...")
-            if not _safeClick(bot, cbX, cbY, statsRect) or not _wait(bot, 1.0):
+            if not _safeClick(bot, cbX, cbY, statsRect) or not _settle(bot, statsScreen, 1.0):
                 return
             statsScreen, ox, oy, statsRect, statsItems = _scanGame(bot)
             if statsScreen is None:
@@ -109,7 +95,7 @@ def _applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsIte
         if nextArrow:
             bot._log(f"🖱 Click chuyển sang Team tiếp theo ({teamMoves} lần)...")
             for _ in range(teamMoves):
-                if not _safeClick(bot, nextArrow[0], nextArrow[1], statsRect) or not _wait(bot, 0.8):
+                if not _safeClick(bot, nextArrow[0], nextArrow[1], statsRect) or not _settle(bot, statsScreen, 0.8):
                     return
             if st is not None:
                 st.teamSwitchedInStats = True
@@ -125,7 +111,7 @@ def _applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsIte
         _safeClick(bot, copyHit[0], copyHit[1], statsRect)
         if st is not None:
             st.teamSwitchedInStats = False
-        _wait(bot, 2.0)
+        _settle(bot, statsScreen, 2.0)
     else:
         bot._log("⚠️ Không tìm thấy nút 'Sao chép', nhấn ESC.")
         _safeEscape(bot)
@@ -142,14 +128,14 @@ def _handlePickTeamInStats(bot, st: AfkLoopState):
         bot._log("⚠️ Không tìm thấy nút 'Thành tích' ở màn hình chuẩn bị đấu.")
         return
     bot._log("🖱 Click 'Thành tích'...")
-    if not _safeClick(bot, statsHit[0], statsHit[1], prepRect) or not _wait(bot, 2.0):
+    if not _safeClick(bot, statsHit[0], statsHit[1], prepRect) or not _settle(bot, prepScreen, 2.0):
         return
     statsScreen, ox, oy, statsRect, statsItems = _scanGame(bot)
     if statsScreen is not None:
         _applyStatsModalTeam(bot, statsScreen, ox, oy, statsRect, statsItems, st=st)
 
 
-def _tryClickStageOption(bot, items, rect, preferChallenge: bool) -> bool:
+def _tryClickStageOption(bot, screen, items, rect, preferChallenge: bool) -> bool:
     """Thử vào trận ở sảnh AFK theo thứ tự ưu tiên."""
     fightArgs = ("fight", "Chiến Đấu thường", config.FIGHT_EXCLUDE_KEYS, config.FIGHT_EXTRA_EXCLUDES, True)
     challengeArgs = ("challenge_hl", "Thách Đấu Huyền Linh SV", None, config.CHALLENGE_HL_EXTRA_EXCLUDES, False)
@@ -160,7 +146,7 @@ def _tryClickStageOption(bot, items, rect, preferChallenge: bool) -> bool:
         if hit:
             bot._log(f"🖱 Click '{label}' tại ({hit[0]}, {hit[1]})...")
             if _safeClick(bot, hit[0], hit[1], rect):
-                _wait(bot, 2.5)
+                _settle(bot, screen, 2.5)
             return True
     return False
 
@@ -199,7 +185,7 @@ def run_auto_afk(bot):
             st.markProgress("pause_auto_prompt")
             bot._log("⚠️ Phát hiện hộp thoại 'Tắt chế độ Chiến Đấu Tự Động?'. Bấm X để tiếp tục auto...")
             _safeClick(bot, pauseCancel[0], pauseCancel[1], rect)
-            _wait(bot, 1.5)
+            _settle(bot, screen, 1.5)
             continue
 
         retryHit = _findKey(bot, items, "retry", wholePhrase=True)
@@ -212,7 +198,7 @@ def run_auto_afk(bot):
                 st.failedAttempts = 0
                 continue
             bot._log("🖱 Click 'Thử Lại'...")
-            if _safeClick(bot, retryHit[0], retryHit[1], rect) and _wait(bot, 2.5):
+            if _safeClick(bot, retryHit[0], retryHit[1], rect) and _settle(bot, screen, 2.5):
                 _handlePickTeamInStats(bot, st)
             continue
 
@@ -225,11 +211,15 @@ def run_auto_afk(bot):
         finishHit = _findKey(bot, items, "auto_battle_complete", excludeKeys=["in_battle_auto"], extraExcludes=config.FIGHT_EXTRA_EXCLUDES)
         if closeHit or finishHit:
             target = closeHit or finishHit
-            bot._log("🖱 Phát hiện màn 'Hoàn Tất' / nút 'Đóng'. Click đóng quay lại chọn chế độ...")
+            # Chỉ tính thua khi có màn 'Hoàn Tất' / 'Thất bại'; nút 'Đóng' của popup khác thì chỉ đóng
+            isDefeat = bool(finishHit) or bool(_findKey(bot, items, "defeat"))
+            bot._log("🖱 Phát hiện màn 'Hoàn Tất' / nút 'Đóng'. Click đóng quay lại chọn chế độ..." if isDefeat
+                     else "🖱 Phát hiện popup có nút 'Đóng' (không phải màn thua). Click đóng...")
             _safeClick(bot, target[0], target[1], rect)
-            st.recordDefeat(fromMainDone=True)
-            st.markProgress("auto_battle_complete")
-            _wait(bot, 2.5)
+            if isDefeat:
+                st.recordDefeat(fromMainDone=True)
+            st.markProgress("auto_battle_complete" if isDefeat else "close_popup")
+            _settle(bot, screen, 2.5)
             continue
 
         autoProgress = findAutoProgressState(bot, items, _findKey)
@@ -238,7 +228,7 @@ def run_auto_afk(bot):
             fails = st.recordDefeat(fromMainDone=True)
             bot._log(f"❌ Phát hiện 'Tự Động Xử Lý Xong!' (Thua lần {fails}/{FAIL_THRESHOLD_TO_SWITCH_MODE}). Click vào chạy lại...")
             _safeClick(bot, autoProgress[1], autoProgress[2], rect)
-            _wait(bot, 2.5)
+            _settle(bot, screen, 2.5)
             continue
 
         waitState = detectPassiveWaitState(bot, items, _findKey, autoProgress=autoProgress, rect=rect)
@@ -251,18 +241,19 @@ def run_auto_afk(bot):
             _wait(bot, config.AUTO_PROGRESS_POLL_INTERVAL)
             continue
 
-        if not isMainOverworldScreen(bot, items, _findKey):
+        isMainScreen = isMainOverworldScreen(bot, items, _findKey)
+        if not isMainScreen:
             autoHit = _findKey(bot, items, "auto_battle", excludeKeys=config.AUTO_BATTLE_EXCLUDE_KEYS, extraExcludes=config.AUTO_BATTLE_EXTRA_EXCLUDES, wholePhrase=True)
             if autoHit:
                 st.markProgress("auto_battle")
                 st.onEnterBattle()
                 bot._log("🖱 Click 'Chiến Đấu Tự Động'...")
                 _safeClick(bot, autoHit[0], autoHit[1], rect)
-                _wait(bot, 3.0)
+                _settle(bot, screen, 3.0)
                 continue
 
             st.resolveLobbySwitch(bot, FAIL_THRESHOLD_TO_SWITCH_MODE)
-            if _tryClickStageOption(bot, items, rect, st.preferChallenge):
+            if _tryClickStageOption(bot, screen, items, rect, st.preferChallenge):
                 st.defeatCounted = False
                 st.lobbyClicksSameMode += 1
                 st.markProgress("stage_option")
@@ -275,16 +266,19 @@ def run_auto_afk(bot):
                 _safeClick(bot, originX + int(w * 0.5), originY + int(h * 0.5), rect)
                 st.onVictory()
                 st.markProgress("victory")
-                _wait(bot, 3.0)
+                _settle(bot, screen, 3.0)
                 continue
 
-        afkHit = findMainLobbyEntry(bot, screen, originX, originY, rect, items, _findKey)
+        deepScan = isMainScreen or now - st.lastDeepScanTime >= config.LOBBY_DEEP_SCAN_INTERVAL
+        if deepScan:
+            st.lastDeepScanTime = now
+        afkHit = findMainLobbyEntry(bot, screen, originX, originY, rect, items, _findKey, deepScan=deepScan)
         if afkHit:
             st.markProgress("afk_icon")
             st.lobbyClicksSameMode = 0
             bot._log("🖱 Tìm thấy sảnh chính. Click vào màn AFK...")
             _safeClick(bot, afkHit[0], afkHit[1], rect)
-            _wait(bot, 2.0)
+            _settle(bot, screen, 2.0)
             continue
 
         bot._log("⏳ Đang theo dõi trận đấu hoặc trạng thái game...")

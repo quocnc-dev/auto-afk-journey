@@ -104,6 +104,10 @@ class BotEngine:
         img, originX, originY = self.capture.capture_window(rect)
         return img, originX, originY, rect
 
+    def peekScreen(self):
+        """Chụp nhanh cửa sổ game (không OCR) để kiểm tra màn hình đã đổi sau click."""
+        return self.captureGameScreen()[0]
+
     def canInteractAt(self, x: int, y: int, expectedRect: tuple[int, int, int, int] | None = None) -> bool:
         """Kiểm tra cửa sổ game đang foreground, đúng rect đã chụp và chứa điểm (x, y)."""
         if self._stop_event.is_set():
