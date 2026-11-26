@@ -46,6 +46,13 @@ Workflow [ci.yml](.github/workflows/ci.yml) tự động build và phát hành 2
    - **Screen Recording**: để chụp đúng cửa sổ game `"AFK Journey"` cho OCR đọc.
    - **Accessibility**: để điều khiển chuột click vào game.
 
+### Giữ quyền macOS qua các lần update
+CI ký `.app` bằng một chứng chỉ tự tạo cố định (không cần tài khoản Apple Developer), nên macOS nhận các bản update là cùng một app và không đòi cấp lại quyền. Cần 2 secret trên GitHub (Settings → Secrets → Actions):
+- `MACOS_CERT_P12`: nội dung base64 của file `.p12` chứng chỉ **Code Signing** kèm private key (`base64 -i cert.p12 | pbcopy`).
+- `MACOS_CERT_PASSWORD`: mật khẩu file `.p12`.
+
+Thiếu secret thì CI vẫn build nhưng không ký (kèm cảnh báo). Giữ lại file `.p12`: tạo chứng chỉ mới sẽ phải cấp quyền lại một lần.
+
 ## 🔄 State Machine
 
 ```text

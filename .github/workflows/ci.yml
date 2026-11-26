@@ -70,7 +70,41 @@ jobs:
             --collect-all customtkinter \
             --collect-data certifi \
             --add-data "build_info.json${{ matrix.add_data_sep }}." \
+            ${{ matrix.os == 'macos-latest' && '--osx-bundle-identifier com.afkjourneybot.app' || '' }} \
             main.py
+
+      # Ký .app bằng chứng chỉ tự tạo cố định (không cần Apple Developer) để macOS giữ quyền
+      # Trợ năng qua các lần update. Thiếu secret thì bỏ qua, build vẫn chạy như cũ.
+      - name: Ký ứng dụng bằng chứng chỉ cố định (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          if [ -z "$MACOS_CERT_P12" ]; then
+            echo "::warning::Chưa có secret MACOS_CERT_P12 — app không được ký, macOS sẽ đòi cấp lại quyền Trợ năng sau mỗi lần update."
+            exit 0
+          fi
+          KC="$RUNNER_TEMP/afk-signing.keychain-db"
+          KC_PASS="$(uuidgen)"
+          P12="$RUNNER_TEMP/afk-signing.p12"
+          trap 'rm -f "$P12"; security delete-keychain "$KC" 2>/dev/null || true' EXIT
+          printf '%s' "$MACOS_CERT_P12" | tr -d '[:space:]' | base64 --decode > "$P12"
+          security create-keychain -p "$KC_PASS" "$KC"
+          security unlock-keychain -p "$KC_PASS" "$KC"
+          security import "$P12" -k "$KC" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign >/dev/null
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PASS" "$KC" >/dev/null
+          IDENTITY=$(security find-identity -p codesigning "$KC" | awk '/^ *1\)/{print $2; exit}')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::Không tìm thấy chứng chỉ ký code trong MACOS_CERT_P12 (file .p12 thiếu private key?)"
+            exit 1
+          fi
+          codesign --force --deep --keychain "$KC" -s "$IDENTITY" dist/AFKJourneyBot.app
+          codesign --verify --deep --strict dist/AFKJourneyBot.app
+          REQ=$(codesign -dr - dist/AFKJourneyBot.app 2>&1)
+          echo "$REQ"
+          echo "$REQ" | grep -q 'certificate leaf' || { echo "::error::Chữ ký không gắn với chứng chỉ"; exit 1; }
 
       - name: Nén file phát hành (macOS .app)
         if: matrix.os == 'macos-latest'
