@@ -89,17 +89,42 @@ jobs:
           KC="$RUNNER_TEMP/afk-signing.keychain-db"
           KC_PASS="$(uuidgen)"
           P12="$RUNNER_TEMP/afk-signing.p12"
+          # Bỏ xuống dòng / CR thừa khi dán secret
+          CERT_PASS="$(printf '%s' "$MACOS_CERT_PASSWORD" | tr -d '\r\n')"
           trap 'rm -f "$P12"; security delete-keychain "$KC" 2>/dev/null || true' EXIT
-          printf '%s' "$MACOS_CERT_P12" | tr -d '[:space:]' | base64 --decode > "$P12"
-          security create-keychain -p "$KC_PASS" "$KC"
-          security unlock-keychain -p "$KC_PASS" "$KC"
-          security import "$P12" -k "$KC" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign >/dev/null
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PASS" "$KC" >/dev/null
-          IDENTITY=$(security find-identity -p codesigning "$KC" | awk '/^ *1\)/{print $2; exit}')
-          if [ -z "$IDENTITY" ]; then
-            echo "::error::Không tìm thấy chứng chỉ ký code trong MACOS_CERT_P12 (file .p12 thiếu private key?)"
+
+          echo "==> Giải mã MACOS_CERT_P12"
+          if ! printf '%s' "$MACOS_CERT_P12" | tr -d '[:space:]' | base64 --decode > "$P12" || [ ! -s "$P12" ]; then
+            echo "::error::MACOS_CERT_P12 không phải base64 hợp lệ. Tạo lại bằng: base64 -i file.p12 | pbcopy"
             exit 1
           fi
+          echo "    .p12 = $(wc -c < "$P12" | tr -d ' ') bytes"
+
+          echo "==> Tạo keychain tạm"
+          security create-keychain -p "$KC_PASS" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KC_PASS" "$KC"
+
+          echo "==> Import .p12"
+          if ! IMPORT_OUT=$(security import "$P12" -k "$KC" -P "$CERT_PASS" -T /usr/bin/codesign 2>&1); then
+            echo "$IMPORT_OUT"
+            echo "::error::Import .p12 thất bại: $IMPORT_OUT — kiểm tra MACOS_CERT_PASSWORD đúng mật khẩu file .p12 (không thừa dấu cách)."
+            exit 1
+          fi
+          echo "$IMPORT_OUT"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PASS" "$KC" >/dev/null 2>&1 || true
+
+          echo "==> Tìm chứng chỉ ký code"
+          IDS=$(security find-identity -p codesigning "$KC")
+          echo "$IDS"
+          IDENTITY=$(echo "$IDS" | awk '/^ *1\)/{print $2; exit}')
+          if [ -z "$IDENTITY" ]; then
+            echo "Chứng chỉ có trong .p12:"; security find-certificate -a "$KC" | grep -E '"labl"|"alis"' || true
+            echo "::error::Không có identity ký code trong .p12 — thiếu private key, hoặc chứng chỉ không phải loại Code Signing."
+            exit 1
+          fi
+
+          echo "==> Ký app"
           codesign --force --deep --keychain "$KC" -s "$IDENTITY" dist/AFKJourneyBot.app
           codesign --verify --deep --strict dist/AFKJourneyBot.app
           REQ=$(codesign -dr - dist/AFKJourneyBot.app 2>&1)
