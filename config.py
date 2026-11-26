@@ -16,6 +16,9 @@ BUNDLE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))
 
 def _resolveLogDir() -> str:
     """Chọn thư mục ghi log có quyền ghi trên cả Windows và macOS (.app bundle)."""
+    override = os.environ.get("AFK_BOT_LOG_DIR", "").strip()
+    if override:
+        return override
     if getattr(sys, "frozen", False):
         if sys.platform == "darwin":
             return os.path.expanduser("~/Library/Logs/AFKJourneyBot")
@@ -44,7 +47,6 @@ CHECKBOX_GREEN_MIN_RATIO = 0.12
 ROI_NEXT_TEAM_AREA = (0.60, 0.20, 0.99, 0.80)
 ROI_AFK_CORNER = (0.55, 0.65, 1.0, 1.0)
 ROI_AFK_CORNER_LEFT = (0.0, 0.78, 0.35, 1.0)
-ROI_BATTLE_TIMER = (0.68, 0.0, 1.0, 0.16)
 ROI_BATTLE_TIMER = (0.70, 0.0, 1.0, 0.16)
 
 # Thông số nhận diện & chờ trạng thái Tự Động Xử Lý ở màn hình chính
@@ -100,6 +102,13 @@ TIMEOUT_WAIT_SCREEN = 30            # Giây tối đa chờ màn hình chuyển
 # ========================
 LOG_FILE = os.path.join(_resolveLogDir(), "bot.log")
 MAX_LOG_LINES = 500                # Số dòng log tối đa hiển thị trên UI
+
+# Lưu ảnh + kết quả OCR khi bot kẹt / gặp màn hình lạ (để chỉnh từ khóa từ dữ liệu thật)
+DEBUG_SNAPSHOT_ENABLED = True
+DEBUG_DIR = os.path.join(_resolveLogDir(), "debug")
+DEBUG_MAX_SNAPSHOTS = 40            # Giữ tối đa N snapshot gần nhất, xóa bản cũ hơn
+DEBUG_SNAPSHOT_MIN_INTERVAL = 60    # Giây tối thiểu giữa 2 snapshot cùng lý do
+DEBUG_UNKNOWN_STREAK = 8            # Số vòng liên tiếp không nhận ra màn hình -> chụp snapshot
 
 # ========================
 #  DELAY (giây)

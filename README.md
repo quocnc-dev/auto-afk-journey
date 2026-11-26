@@ -15,7 +15,8 @@ auto-afk-journey/
 ├── controller.py        # Chuột/bàn phím (Virtual Desktop Windows / macOS)
 ├── config.py            # Cấu hình từ khóa OCR, ngưỡng, ROI
 ├── modules/
-│   └── auto_afk.py      # Luồng tự động vượt ải Auto AFK
+│   ├── auto_afk.py      # Luồng tự động vượt ải Auto AFK
+│   └── debug_snapshot.py # Lưu ảnh + OCR khi bot kẹt (logs/debug/)
 ├── tests/               # Unit tests tự động
 ├── .github/workflows/   # GitHub Actions build & Release Windows + macOS
 ├── setup.bat            # Cài đặt thư viện trên Windows
@@ -50,6 +51,14 @@ Workflow [ci.yml](.github/workflows/ci.yml) tự động build và phát hành 2
 ```text
 IDLE → LAUNCH_GAME → AUTO_AFK → DONE / ERROR
 ```
+
+## 🐞 Gửi lỗi / Debug
+
+Khi bot không nhận ra màn hình (≥ 8 vòng liên tiếp) hoặc kẹt 20 phút, bot tự lưu `ảnh .png` + `kết quả OCR .json` vào thư mục `debug/` cạnh `bot.log`:
+- Chạy từ mã nguồn / Windows: `logs/debug/`
+- macOS (.app): `~/Library/Logs/AFKJourneyBot/debug/`
+
+Gửi kèm `bot.log` và các file trong `debug/` khi báo lỗi. Có thể đổi thư mục log bằng biến môi trường `AFK_BOT_LOG_DIR`; tắt/chỉnh ngưỡng trong `config.py` (`DEBUG_*`).
 
 ## ⚠️ Lưu ý
 - Giữ cửa sổ `"AFK Journey"` hiển thị (không bị thu nhỏ hoặc che khuất); nếu mất cửa sổ game, bot sẽ tự tạm dừng và không click ra ngoài ứng dụng khác.

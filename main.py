@@ -21,15 +21,19 @@ from ui_updater import checkUpdateAsync
 # ──────────────────────────────────────────────────────────
 #  Logging setup
 # ──────────────────────────────────────────────────────────
-os.makedirs(os.path.dirname(config.LOG_FILE), exist_ok=True)
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.FileHandler(config.LOG_FILE, encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
-    ],
-)
+def setupLogging():
+    """Gắn FileHandler khi chạy app thật (không chạy lúc import để test không ghi vào log thật)."""
+    os.makedirs(os.path.dirname(config.LOG_FILE), exist_ok=True)
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        handlers=[
+            logging.FileHandler(config.LOG_FILE, encoding="utf-8"),
+            logging.StreamHandler(sys.stdout),
+        ],
+    )
+
+
 logger = logging.getLogger("AFK_Bot")
 
 ctk.set_appearance_mode("dark")
@@ -231,7 +235,7 @@ class AFKBotApp(ctk.CTk):
 
 
 def main():
-    os.makedirs(os.path.dirname(config.LOG_FILE), exist_ok=True)
+    setupLogging()
     app = AFKBotApp()
     app.mainloop()
 

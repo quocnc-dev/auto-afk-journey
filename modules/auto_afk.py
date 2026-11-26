@@ -1,7 +1,4 @@
-"""
-Module tự động vượt ải Auto AFK bằng OCR + Neo tọa độ + Kiểm tra màu HSV.
-Không yêu cầu người dùng tự chụp bất kỳ ảnh template nào.
-"""
+"""Module tự động vượt ải Auto AFK bằng OCR + Neo tọa độ + HSV (không cần template)."""
 
 import time
 import logging
@@ -11,6 +8,7 @@ from modules.afk_detectors import (
     AfkLoopState, detectPassiveWaitState, findAutoProgressState,
     findMainLobbyEntry, findPauseAutoConfirmCancel, isMainOverworldScreen,
 )
+from modules.debug_snapshot import saveSnapshot
 from ocr_engine import inspectCheckboxByText, findNextTeamArrow
 
 logger = logging.getLogger("AFK_Bot.AutoAFK")
@@ -168,19 +166,17 @@ def _tryClickStageOption(bot, items, rect, preferChallenge: bool) -> bool:
 
 
 def run_auto_afk(bot):
-    """
-    Thực hiện nhiệm vụ Auto AFK bằng OCR + Neo tọa độ (không cần chụp template).
-    Dừng an toàn nếu mất cửa sổ game quá lâu hoặc kẹt cùng một trạng thái quá 20 phút.
-    """
+    """Chạy Auto AFK; dừng an toàn nếu mất cửa sổ game quá lâu hoặc kẹt một trạng thái quá 20 phút."""
     bot._log("🚀 Bắt đầu vòng lặp Auto AFK bằng OCR...")
 
     st = AfkLoopState()
-    missingWindowSince = None
+    missingWindowSince, lastFrame, unknownStreak = None, (None, None, None), 0
 
     while not bot._stop_event.is_set():
         now = time.time()
         if now - st.lastProgressTime > NO_ACTION_LIMIT_SECONDS:
             bot._log("⚠️ Màn hình không có tiến triển mới quá 20 phút. Dừng Auto AFK để đảm bảo an toàn!")
+            saveSnapshot(bot, "no_progress", *lastFrame, extra={"lastState": st.lastStateKey})
             return False
 
         screen, originX, originY, rect, items = _scanGame(bot)
@@ -196,7 +192,7 @@ def run_auto_afk(bot):
                 return False
             _wait(bot, 1.0)
             continue
-        missingWindowSince = None
+        missingWindowSince, lastFrame, prevUnknown, unknownStreak = None, (screen, items, rect), unknownStreak, 0
 
         pauseCancel = findPauseAutoConfirmCancel(bot, screen, originX, originY, items, _findKey)
         if pauseCancel is not None:
@@ -292,6 +288,9 @@ def run_auto_afk(bot):
             continue
 
         bot._log("⏳ Đang theo dõi trận đấu hoặc trạng thái game...")
+        unknownStreak = prevUnknown + 1
+        if unknownStreak == config.DEBUG_UNKNOWN_STREAK:
+            saveSnapshot(bot, "unknown_screen", screen, items, rect, extra={"lastState": st.lastStateKey})
         _wait(bot, 1.5)
 
     bot._log("✅ Dừng nhiệm vụ Auto AFK.")

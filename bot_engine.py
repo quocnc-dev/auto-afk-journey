@@ -30,6 +30,7 @@ from window_manager import (
     requestInputPermission,
 )
 from modules.auto_afk import run_auto_afk
+from modules.debug_snapshot import DebugSnapshotter
 
 logger = logging.getLogger("AFK_Bot")
 
@@ -56,6 +57,7 @@ class BotEngine:
         self.capture = ScreenCapture()
         self.ocr = OcrEngine(config.OCR_FUZZY_THRESHOLD)
         self.ctrl = Controller(delay_after_click=config.DELAY_AFTER_CLICK)
+        self.debugSnap = DebugSnapshotter()
 
         self.log_callback = log_callback or (lambda msg: None)
         self.prompt_callback = prompt_callback
