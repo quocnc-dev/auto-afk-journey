@@ -44,6 +44,7 @@ def _handleCheckResult(app, info: updater.UpdateInfo | None, err: Exception | No
     app._update_busy = False
     if err is not None:
         _setUpdateButton(app, "🔄  Kiểm tra cập nhật")
+        app.update_idletasks()
         if not silent:
             messagebox.showerror("Lỗi kiểm tra cập nhật", f"Không thể kết nối GitHub:\n{err}", parent=app)
         else:
@@ -53,6 +54,7 @@ def _handleCheckResult(app, info: updater.UpdateInfo | None, err: Exception | No
     assert info is not None
     if not info.hasUpdate:
         _setUpdateButton(app, "🔄  Kiểm tra cập nhật")
+        app.update_idletasks()
         if not silent:
             messagebox.showinfo(
                 "Đã cập nhật mới nhất",

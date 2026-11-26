@@ -124,3 +124,28 @@ UPDATE_CHUNK_SIZE = 65536
 UPDATE_ASSET_DARWIN = "afk-journey-bot-macos-arm64.zip"
 UPDATE_ASSET_WINDOWS = "afk-journey-bot-windows-x64.zip"
 BUILD_INFO_FILENAME = "build_info.json"
+
+
+def getGithubUpdateToken() -> str:
+    """Đọc AFK_BOT_GITHUB_TOKEN từ biến môi trường hoặc file .env.local (dùng cho repo Private)."""
+    envToken = os.environ.get("AFK_BOT_GITHUB_TOKEN", "").strip()
+    if envToken:
+        return envToken
+    candidates = [
+        os.path.join(os.getcwd(), ".env.local"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.local"),
+        os.path.join(os.path.dirname(sys.executable), ".env.local"),
+        os.path.expanduser("~/.afk_journey_bot.env.local"),
+    ]
+    for path in candidates:
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("AFK_BOT_GITHUB_TOKEN="):
+                        return line.split("=", 1)[1].strip().strip('"').strip("'")
+        except Exception:
+            pass
+    return ""

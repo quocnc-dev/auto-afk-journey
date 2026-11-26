@@ -9,9 +9,11 @@ import os
 import re
 import shlex
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
+import urllib.error
 import urllib.request
 import zipfile
 from dataclasses import dataclass
@@ -95,30 +97,47 @@ def getPlatformAssetName(platform: str | None = None) -> str:
     return ""
 
 
+def buildSslContext() -> ssl.SSLContext:
+    """Tạo SSLContext có CA bundle (certifi hoặc /etc/ssl/cert.pem trên macOS)."""
+    try:
+        import certifi
+        caPath = certifi.where()
+        if caPath and os.path.isfile(caPath):
+            return ssl.create_default_context(cafile=caPath)
+    except Exception:
+        pass
+    if os.path.isfile("/etc/ssl/cert.pem"):
+        return ssl.create_default_context(cafile="/etc/ssl/cert.pem")
+    return ssl.create_default_context()
+
+
 def checkForUpdate(releaseUrl: str | None = None) -> UpdateInfo:
     """Gọi GitHub Releases API để kiểm tra bản phát hành mới nhất."""
     buildInfo = getCurrentBuildInfo()
     currentTag = str(buildInfo.get("tag", f"v{config.APP_VERSION}"))
     expectedAsset = getPlatformAssetName()
     url = releaseUrl or config.GITHUB_RELEASES_LATEST_URL
+    token = config.getGithubUpdateToken()
 
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "AFKJourneyBot-Updater",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=config.UPDATE_HTTP_TIMEOUT) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "AFKJourneyBot-Updater"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=config.UPDATE_HTTP_TIMEOUT, context=buildSslContext()) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise RuntimeError(
+                "Không tìm thấy GitHub Release (404). Nếu repo đang Private, hãy chuyển Public hoặc đặt AFK_BOT_GITHUB_TOKEN trong .env.local."
+            ) from exc
+        raise
 
     latestTag = str(data.get("tag_name") or data.get("name") or "")
-    downloadUrl = ""
-    assetName = expectedAsset
-    assetSize = 0
+    downloadUrl, assetSize = "", 0
     for asset in data.get("assets") or []:
         if asset.get("name") == expectedAsset:
-            downloadUrl = str(asset.get("browser_download_url") or "")
+            downloadUrl = str((asset.get("url") if token else asset.get("browser_download_url")) or asset.get("browser_download_url") or "")
             assetSize = int(asset.get("size") or 0)
             break
 
@@ -127,7 +146,7 @@ def checkForUpdate(releaseUrl: str | None = None) -> UpdateInfo:
         latestTag=latestTag,
         hasUpdate=isNewerRelease(currentTag, latestTag),
         downloadUrl=downloadUrl,
-        assetName=assetName,
+        assetName=expectedAsset,
         assetSize=assetSize,
         releaseNotes=str(data.get("body") or "").strip(),
         htmlUrl=str(data.get("html_url") or ""),
@@ -159,8 +178,13 @@ def downloadAndExtractUpdate(
     os.makedirs(extractDir, exist_ok=True)
 
     try:
-        req = urllib.request.Request(downloadUrl, headers={"User-Agent": "AFKJourneyBot-Updater"})
-        with urllib.request.urlopen(req, timeout=config.UPDATE_DOWNLOAD_TIMEOUT) as resp:
+        dlHeaders = {"User-Agent": "AFKJourneyBot-Updater"}
+        token = config.getGithubUpdateToken()
+        if token and "/releases/assets/" in downloadUrl:
+            dlHeaders["Authorization"] = f"Bearer {token}"
+            dlHeaders["Accept"] = "application/octet-stream"
+        req = urllib.request.Request(downloadUrl, headers=dlHeaders)
+        with urllib.request.urlopen(req, timeout=config.UPDATE_DOWNLOAD_TIMEOUT, context=buildSslContext()) as resp:
             totalSize = int(resp.headers.get("Content-Length") or 0)
             downloaded = 0
             with open(zipPath, "wb") as outFile:
@@ -240,30 +264,17 @@ def buildWindowsUpdateScript(pid: int, sourceDir: str, targetDir: str, workDir: 
 
 def buildMacUpdateScript(pid: int, sourceApp: str, targetApp: str, workDir: str) -> str:
     """Tạo shell script chờ thoát PID, thay thế .app bundle an toàn và mở lại ứng dụng."""
-    backupApp = f"{targetApp}.bak"
-    qSrc = shlex.quote(sourceApp)
-    qDst = shlex.quote(targetApp)
-    qBak = shlex.quote(backupApp)
-    qWork = shlex.quote(workDir)
+    qSrc, qDst, qBak, qWork = map(shlex.quote, (sourceApp, targetApp, f"{targetApp}.bak", workDir))
     return "\n".join([
-        "#!/bin/bash",
-        "tries=0",
-        f"while kill -0 {pid} 2>/dev/null && [ $tries -lt 30 ]; do",
-        "  sleep 0.5",
-        "  tries=$((tries+1))",
-        "done",
+        "#!/bin/bash", "tries=0",
+        f"while kill -0 {pid} 2>/dev/null && [ $tries -lt 30 ]; do sleep 0.5; tries=$((tries+1)); done",
         f"rm -rf {qBak}",
         f"if mv {qDst} {qBak}; then",
         f"  if /usr/bin/ditto {qSrc} {qDst}; then",
-        f"    rm -rf {qBak}",
-        f"    xattr -dr com.apple.quarantine {qDst} 2>/dev/null || true",
-        f"    open {qDst}",
-        "  else",
-        f"    mv {qBak} {qDst}",
-        "  fi",
+        f"    rm -rf {qBak}; xattr -dr com.apple.quarantine {qDst} 2>/dev/null || true; open {qDst}",
+        f"  else mv {qBak} {qDst}; fi",
         "fi",
-        f"rm -rf {qWork}",
-        'rm -f "$0"',
+        f'rm -rf {qWork}; rm -f "$0"',
     ])
 
 
@@ -271,25 +282,18 @@ def launchUpdateInstaller(workDir: str, extractDir: str) -> str:
     """Tạo và chạy script nền để áp dụng bản cập nhật sau khi app thoát."""
     if not getattr(sys, "frozen", False):
         raise RuntimeError("Chỉ hỗ trợ tự cài đè khi chạy từ bản đóng gói (.exe / .app).")
-
-    payload = findExtractedPayload(extractDir)
-    target = resolveInstallTarget()
-    pid = os.getpid()
-
-    if sys.platform == "win32":
-        fd, scriptPath = tempfile.mkstemp(prefix="afk_apply_", suffix=".bat")
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
-            f.write(buildWindowsUpdateScript(pid, payload, target, workDir))
+    payload, target, pid = findExtractedPayload(extractDir), resolveInstallTarget(), os.getpid()
+    suffix = ".bat" if sys.platform == "win32" else ".sh" if sys.platform == "darwin" else ""
+    if not suffix:
+        raise RuntimeError(f"Không hỗ trợ tự cài đặt trên: {sys.platform}")
+    scriptText = buildWindowsUpdateScript(pid, payload, target, workDir) if suffix == ".bat" else buildMacUpdateScript(pid, payload, target, workDir)
+    fd, scriptPath = tempfile.mkstemp(prefix="afk_apply_", suffix=suffix)
+    with os.fdopen(fd, "w", encoding="utf-8", newline="" if suffix == ".bat" else "\n") as f:
+        f.write(scriptText)
+    if suffix == ".bat":
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
         subprocess.Popen(["cmd.exe", "/c", scriptPath], creationflags=flags, close_fds=True)
-        return scriptPath
-
-    if sys.platform == "darwin":
-        fd, scriptPath = tempfile.mkstemp(prefix="afk_apply_", suffix=".sh")
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(buildMacUpdateScript(pid, payload, target, workDir))
+    else:
         os.chmod(scriptPath, 0o700)
         subprocess.Popen(["/bin/bash", scriptPath], start_new_session=True, close_fds=True)
-        return scriptPath
-
-    raise RuntimeError(f"Không hỗ trợ tự cài đặt trên: {sys.platform}")
+    return scriptPath

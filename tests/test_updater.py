@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import ssl
 import tempfile
 import unittest
 import zipfile
@@ -70,11 +71,13 @@ class TestUpdater(unittest.TestCase):
         }).encode("utf-8")
 
         origOpen = updater.urllib.request.urlopen
-        updater.urllib.request.urlopen = lambda req, timeout=None: _FakeResponse(fakePayload)
+        updater.urllib.request.urlopen = lambda req, timeout=None, context=None: _FakeResponse(fakePayload)
         try:
             info = updater.checkForUpdate()
         finally:
             updater.urllib.request.urlopen = origOpen
+
+        self.assertIsInstance(updater.buildSslContext(), ssl.SSLContext)
 
         self.assertTrue(info.hasUpdate)
         self.assertEqual(info.latestTag, "v1.0.0-build.999")
@@ -115,6 +118,21 @@ class TestUpdater(unittest.TestCase):
         self.assertIn("/usr/bin/ditto", macScript)
         self.assertIn("kill -0 5678", macScript)
         self.assertIn("open /Applications/AFKJourneyBot.app", macScript)
+
+    def test_private_repo_token_read_from_env_local(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            envPath = os.path.join(tmp, ".env.local")
+            with open(envPath, "w", encoding="utf-8") as f:
+                f.write("AFK_BOT_GITHUB_TOKEN=ghp_test123\n")
+            origCwd = os.getcwd()
+            origEnv = os.environ.pop("AFK_BOT_GITHUB_TOKEN", None)
+            os.chdir(tmp)
+            try:
+                self.assertEqual(config.getGithubUpdateToken(), "ghp_test123")
+            finally:
+                os.chdir(origCwd)
+                if origEnv is not None:
+                    os.environ["AFK_BOT_GITHUB_TOKEN"] = origEnv
 
 
 if __name__ == "__main__":

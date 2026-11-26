@@ -8,3 +8,4 @@ pywin32>=306; sys_platform == "win32"
 pydirectinput>=1.0.4; sys_platform == "win32"
 pyobjc-framework-Quartz>=10.0; sys_platform == "darwin"
 pyautogui>=0.9.54; sys_platform == "darwin"
+certifi>=2024.0.0
