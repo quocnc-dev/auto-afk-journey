@@ -85,7 +85,7 @@ class TestSlowPrepScreen(unittest.TestCase):
         img = cv2.imread(FIXTURE)
         waits = []
         bot = MockBot(self.ocr, [])
-        st = AfkLoopState(failedAttempts=3)
+        st = AfkLoopState(teamCursor=2)  # Đã chép team #2 -> lần này bấm mũi tên 2 lần để tới team #3
         origWait, origArrow, origScan = auto_afk._wait, team_copy.findNextTeamArrow, auto_afk._scanGame
         auto_afk._wait = lambda b, s: waits.append(s) or True
         team_copy.findNextTeamArrow = lambda *a, **k: (600, 500)

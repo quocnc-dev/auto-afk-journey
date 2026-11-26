@@ -50,8 +50,9 @@ def applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsItem
             if statsScreen is None:
                 return
 
-    attempts = st.failedAttempts if st is not None else failedAttempts
-    teamMoves = max(0, attempts - 1)
+    # Mỗi lần thua chép team kế tiếp: bảng mở ở team đầu -> bấm mũi tên `teamCursor` lần để tới team (teamCursor + 1)
+    teamMoves = st.teamCursor if st is not None else max(0, failedAttempts - 1)
+    targetTeam = teamMoves + 1
     alreadySwitched = st.teamSwitchedInStats if st is not None else False
     if teamMoves > 0 and not alreadySwitched:
         nextArrow = findNextTeamArrow(statsScreen, ox, oy)
@@ -69,14 +70,18 @@ def applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsItem
             if statsScreen is None:
                 return
         else:
-            bot._log("⚠️ Không tìm thấy nút chuyển Team, sao chép đội hình đang hiển thị...")
+            bot._log("⚠️ Không tìm thấy nút chuyển Team (có thể đã hết danh sách), quay về chép team đầu tiên...")
+            targetTeam = 1
 
     copyHit = core._findKey(bot, statsItems, "copy_team")
     if copyHit:
-        bot._log("🖱 Click 'Sao chép' đội hình...")
+        bot._log(f"🖱 Click 'Sao chép' đội hình (team #{targetTeam} trong bảng Thành tích)...")
         clicked = core._safeClick(bot, copyHit[0], copyHit[1], statsRect)
         if st is not None:
             st.teamSwitchedInStats = False
+            if clicked:
+                st.teamCursor = targetTeam
+                st.needTeamChange = False
         core._settle(bot, statsScreen, 2.0) if clicked else core._wait(bot, 1.0)
     else:
         bot._log("⚠️ Không tìm thấy nút 'Sao chép', nhấn ESC.")
@@ -84,10 +89,13 @@ def applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsItem
         core._wait(bot, 1.0)
 
 
-def handlePickTeamInStats(bot, st: AfkLoopState):
-    """Sau 'Thử Lại': chờ màn chuẩn bị đấu load xong, mở 'Thành tích' và sao chép đội hình."""
+def handlePickTeamInStats(bot, st: AfkLoopState, prepFrame=None):
+    """Ở màn chuẩn bị đấu (sau 'Thử Lại' hoặc vào lại từ sảnh): mở 'Thành tích' và chép team kế tiếp."""
     core = _core()
-    prep = scanUntilKey(bot, "stats", config.PREP_SCREEN_WAIT)
+    st.needTeamChange = False  # Chỉ thử 1 lần mỗi lần thua, tránh mở Thành tích lặp mãi nếu có lỗi
+    # prepFrame = (screen, rect, items, statsHit) khi vòng lặp chính đã có sẵn khung hình -> khỏi OCR lại
+    prep = (prepFrame[0], 0, 0, prepFrame[1], prepFrame[2], prepFrame[3]) if prepFrame else \
+        scanUntilKey(bot, "stats", config.PREP_SCREEN_WAIT)
     if prep is None:
         if not bot._stop_event.is_set():
             bot._log("⚠️ Không tìm thấy nút 'Thành tích' ở màn hình chuẩn bị đấu.")

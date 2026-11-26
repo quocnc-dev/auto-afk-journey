@@ -5,67 +5,12 @@ Bộ nhận diện trạng thái màn hình chính cho Auto AFK:
 """
 
 import re
-import time
-from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
 
 import config
-
-
-@dataclass
-class AfkLoopState:
-    """Theo dõi số lần thua, chế độ ưu tiên (Huyễn Linh/Thường) và mốc tiến triển."""
-
-    failedAttempts: int = 0
-    defeatCounted: bool = False
-    teamSwitchedInStats: bool = False
-    lobbyClicksSameMode: int = 0
-    preferChallenge: bool = True
-    lastStateKey: str | None = None
-    lastProgressTime: float = field(default_factory=time.time)
-    lastDeepScanTime: float = float("-inf")
-    lastFocusLossTime: float | None = None
-
-    def markProgress(self, stateKey: str, refreshAlways: bool = False):
-        if refreshAlways or self.lastStateKey != stateKey:
-            self.lastStateKey = stateKey
-            self.lastProgressTime = time.time()
-
-    def recordDefeat(self, fromMainDone: bool = False) -> int:
-        if not self.defeatCounted:
-            self.failedAttempts += 1
-        self.defeatCounted = fromMainDone
-        self.teamSwitchedInStats = False
-        self.lobbyClicksSameMode = 0
-        return self.failedAttempts
-
-    def onEnterBattle(self):
-        self.defeatCounted = False
-        self.teamSwitchedInStats = False
-        self.lobbyClicksSameMode = 0
-
-    def onVictory(self):
-        self.failedAttempts = 0
-        self.defeatCounted = False
-        self.teamSwitchedInStats = False
-        self.lobbyClicksSameMode = 0
-
-    def resolveLobbySwitch(self, bot, failThreshold: int) -> bool:
-        if self.failedAttempts >= failThreshold:
-            self.preferChallenge = not self.preferChallenge
-            modeName = "Thách Đấu Huyền Linh SV" if self.preferChallenge else "Chiến Đấu Thường"
-            bot._log(f"🔄 Đã thua {self.failedAttempts} lần! Chuyển chế độ ưu tiên sang: {modeName}")
-            self.failedAttempts = 0
-            self.defeatCounted = False
-            self.lobbyClicksSameMode = 0
-        elif self.lobbyClicksSameMode >= config.STAGE_CLICK_FALLBACK_THRESHOLD:
-            self.preferChallenge = not self.preferChallenge
-            modeName = "Thách Đấu Huyền Linh SV" if self.preferChallenge else "Chiến Đấu Thường"
-            bot._log(f"⚠️ Nút ưu tiên không vào được trận (hết ải/khóa), fallback sang: {modeName}")
-            self.lobbyClicksSameMode = 0
-        return self.preferChallenge
+from modules.loop_state import AfkLoopState  # noqa: F401  (giữ import cũ: from modules.afk_detectors import AfkLoopState)
 
 
 _OCR_DIGIT_FIX = str.maketrans({"l": "1", "i": "1", "|": "1", "o": "0"})

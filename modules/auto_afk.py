@@ -177,7 +177,7 @@ def run_auto_afk(bot):
             bot._log(f"❌ Trận đấu THẤT BẠI (Lần thứ {fails}/{FAIL_THRESHOLD_TO_SWITCH_MODE} liên tiếp)!")
             if fails >= FAIL_THRESHOLD_TO_SWITCH_MODE:
                 st.preferChallenge = _handleDefeatSwitchMode(bot, screen, originX, originY, rect, items, retryHit, st.preferChallenge)
-                st.failedAttempts = 0
+                st.onModeSwitched()
                 continue
             bot._log("🖱 Click 'Thử Lại'...")
             if _safeClick(bot, retryHit[0], retryHit[1], rect) and _settle(bot, screen, 2.5):
@@ -237,6 +237,12 @@ def run_auto_afk(bot):
 
         isMainScreen = isMainOverworldScreen(bot, items, _findKey)
         if not isMainScreen:
+            statsHit = _findKey(bot, items, "stats") if st.needTeamChange else None
+            if statsHit:
+                # Thua kiểu 'Hoàn Tất' / 'Xong!' -> về chọn chế độ rồi vào lại: đổi team trước khi đánh
+                bot._log("🔁 Vừa thua — chép team kế tiếp trước khi vào trận...")
+                _handlePickTeamInStats(bot, st, prepFrame=(screen, rect, items, statsHit))
+                continue
             autoHit = _findKey(bot, items, "auto_battle", excludeKeys=config.AUTO_BATTLE_EXCLUDE_KEYS, extraExcludes=config.AUTO_BATTLE_EXTRA_EXCLUDES, wholePhrase=True)
             if autoHit:
                 st.markProgress("auto_battle")
