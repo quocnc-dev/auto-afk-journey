@@ -60,6 +60,7 @@ AUTO_PROGRESS_DONE_WORD = "xong"
 AUTO_PROGRESS_MAX_DX_HEIGHT_MULT = 4
 AUTO_PROGRESS_MAX_DY_HEIGHT_MULT = 4.0
 AUTO_PROGRESS_SPLIT_DY_MULT = 2.5
+STAGE_CLICK_FALLBACK_THRESHOLD = 2  # Số lần bấm sảnh liên tiếp không vào trận -> đổi chế độ còn lại
 
 # Từ khóa OCR đã chuẩn hóa (không dấu, chữ thường)
 OCR_KEYWORDS = {
