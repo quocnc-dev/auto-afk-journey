@@ -69,6 +69,7 @@ OCR_KEYWORDS = {
     "owned_team": ["doi hinh da so", "hien thi doi hinh", "owned"],
     "copy_team": ["sao chep", "copy"],
     "auto_battle_complete": ["tu dong hoan", "tu dong hoan tat", "auto battle complete"],
+    "close_btn": ["dong", "close"],
     "auto_battle": ["tu dong", "tudong", "auto battle"],
     "auto_progress": ["tu dong xu ly", "auto progress"],
     "auto_progress_part": ["xu ly"],

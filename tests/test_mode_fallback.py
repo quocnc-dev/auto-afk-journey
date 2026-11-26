@@ -78,6 +78,22 @@ class TestModeFallback(unittest.TestCase):
         self.assertEqual(clicks[-1], (180, 800))
         self.assertNotIn((150, 820), clicks)
 
+    def test_close_button_after_stage2_defeat_preserves_and_counts_defeats(self):
+        retryScene = [_ocrItem("Thử Lại", 450, 820)]
+        autoBattleScene = [_ocrItem("Chiến Đấu Tự Động", 500, 820)]
+        closeOnlyDefeat = [
+            _ocrItem("Chiến Đấu Tự Động Hoàn Tất", 340, 280),
+            _ocrItem("Đóng", 340, 780),
+        ]
+        lobbyBoth = [_ocrItem("Thách Đấu Huyền Linh SV", 180, 800), _ocrItem("Chiến Đấu", 510, 800)]
+
+        # Thua 4 lần (Thử Lại) + lần 5 thắng màn 1 rồi thua màn 2 chỉ có nút Đóng -> phải đủ 5 để chuyển Thường (510, 800)
+        scenes = ([retryScene, autoBattleScene] * 4) + [closeOnlyDefeat, lobbyBoth]
+        clicks = self._runWithScenes(scenes)
+        self.assertIn((340, 780), clicks)
+        self.assertEqual(clicks[-1], (510, 800))
+        self.assertIsNone(auto_afk._findKey(MockBot(self.ocr, []), autoBattleScene, "close_btn", exactOnly=True))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -217,11 +217,13 @@ def run_auto_afk(bot):
                 _handlePickTeamInStats(bot, fails)
             continue
 
+        closeHit = _findKey(bot, items, "close_btn", exactOnly=True)
         finishHit = _findKey(bot, items, "auto_battle_complete", excludeKeys=["in_battle_auto"], extraExcludes=config.FIGHT_EXTRA_EXCLUDES)
-        if finishHit:
-            bot._log("🎉 Phát hiện 'Chiến Đấu Tự Động Hoàn Tất'. Click đóng...")
-            _safeClick(bot, finishHit[0], finishHit[1], rect)
-            st.lobbyClicksSameMode = 0
+        if closeHit or finishHit:
+            target = closeHit or finishHit
+            bot._log("🖱 Phát hiện màn 'Hoàn Tất' / nút 'Đóng'. Click đóng quay lại chọn chế độ...")
+            _safeClick(bot, target[0], target[1], rect)
+            st.recordDefeat(fromMainDone=True)
             st.markProgress("auto_battle_complete")
             _wait(bot, 2.5)
             continue
