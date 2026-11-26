@@ -111,3 +111,15 @@ MAX_LOG_LINES = 500                # Số dòng log tối đa hiển thị trên
 DELAY_AFTER_CLICK = 0.5
 DELAY_AFTER_SCREEN_CHANGE = 1.5
 DELAY_SHORT = 0.3
+
+# ========================
+#  CẬP NHẬT TỰ ĐỘNG (IN-APP UPDATE)
+# ========================
+GITHUB_REPO = os.environ.get("AFK_BOT_GITHUB_REPO", "quocnc-dev/auto-afk-journey")
+GITHUB_RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+UPDATE_HTTP_TIMEOUT = 15
+UPDATE_DOWNLOAD_TIMEOUT = 180
+UPDATE_CHUNK_SIZE = 65536
+UPDATE_ASSET_DARWIN = "afk-journey-bot-macos-arm64.zip"
+UPDATE_ASSET_WINDOWS = "afk-journey-bot-windows-x64.zip"
+BUILD_INFO_FILENAME = "build_info.json"

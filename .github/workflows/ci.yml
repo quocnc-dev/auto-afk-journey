@@ -50,6 +50,17 @@ jobs:
       - name: Chạy unit tests
         run: python -m unittest discover -s tests -v
 
+      - name: Tạo metadata phiên bản build
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          else
+            PKG_VERSION=$(grep '^APP_VERSION' config.py | head -n1 | cut -d '"' -f2)
+            TAG_NAME="v${PKG_VERSION}-build.${{ github.run_number }}"
+          fi
+          python -c "import json; json.dump({'tag': '${TAG_NAME}', 'sha': '${{ github.sha }}', 'run_number': int('${{ github.run_number }}')}, open('build_info.json', 'w'), indent=2)"
+
       - name: Đóng gói ứng dụng bằng PyInstaller
         shell: bash
         run: |
@@ -58,6 +69,7 @@ jobs:
             --collect-all rapidocr_onnxruntime \
             --collect-all customtkinter \
             --add-data "templates${{ matrix.add_data_sep }}templates" \
+            --add-data "build_info.json${{ matrix.add_data_sep }}." \
             main.py
 
       - name: Nén file phát hành (macOS .app)

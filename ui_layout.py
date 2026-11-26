@@ -6,6 +6,7 @@ Tách khỏi main.py để giữ mỗi module gọn dưới 300 dòng.
 import customtkinter as ctk
 
 import config
+import updater
 from ui_tabs import COLORS, buildLogTab, buildPreviewTab, buildTemplateTab
 
 
@@ -93,9 +94,22 @@ def buildSidebar(app):
         anchor="w",
         command=app._open_log_dir,
     ).grid(row=17, column=0, padx=8, pady=2, sticky="ew")
+    app.btn_update = ctk.CTkButton(
+        sidebar,
+        text="🔄  Kiểm tra cập nhật",
+        fg_color="transparent",
+        hover_color=COLORS["bg_card2"],
+        text_color=COLORS["text_muted"],
+        anchor="w",
+        command=app._on_check_update,
+    )
+    app.btn_update.grid(row=18, column=0, padx=8, pady=2, sticky="ew")
 
     ctk.CTkLabel(
-        sidebar, text=f"v{config.APP_VERSION} • AFK Journey Bot", font=ctk.CTkFont(size=9), text_color=COLORS["text_muted"]
+        sidebar,
+        text=f"{updater.getDisplayVersion()} • AFK Journey Bot",
+        font=ctk.CTkFont(size=9),
+        text_color=COLORS["text_muted"],
     ).grid(row=21, column=0, padx=16, pady=(0, 12), sticky="sw")
 
 

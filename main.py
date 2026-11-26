@@ -16,6 +16,7 @@ import config
 from bot_engine import BotEngine, State
 from ui_layout import buildMainArea, buildSidebar
 from ui_tabs import COLORS, refreshTemplateList, runPreviewWorker
+from ui_updater import checkUpdateAsync
 
 # ──────────────────────────────────────────────────────────
 #  Logging setup
@@ -59,6 +60,7 @@ class AFKBotApp(ctk.CTk):
         self._build_ui()
         self._update_status_idle()
         self.after(500, self._check_bot_status)
+        self.after(1500, lambda: checkUpdateAsync(self, silent=True))
 
     def _build_ui(self):
         self.grid_columnconfigure(1, weight=1)
@@ -201,6 +203,9 @@ class AFKBotApp(ctk.CTk):
 
     def _open_template_manager(self):
         self.tab_view.set("🗺 Template")
+
+    def _on_check_update(self):
+        checkUpdateAsync(self, silent=False)
 
     def _reload_templates(self):
         self.bot.matcher.reload_cache()
