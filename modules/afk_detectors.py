@@ -143,8 +143,8 @@ def findPauseAutoConfirmCancel(bot, screen, originX: int, originY: int, items, f
     Không dò theo vùng trắng vì nền popup cũng màu kem sáng, sẽ khớp nhầm cả nền.
     """
     hit = findKeyFn(bot, items, "pause_auto_prompt")
-    if not hit:
-        return None
+    if not hit or findKeyFn(bot, items, "auto_battle_complete"):
+        return None  # Màn 'Chiến Đấu Tự Động Hoàn Tất' không phải popup tắt auto
     pItem = hit[3]
     imgH, imgW = screen.shape[:2]
     if hasattr(cv2, "findContours") and getattr(screen, "ndim", 0) == 3:
@@ -156,7 +156,9 @@ def findPauseAutoConfirmCancel(bot, screen, originX: int, originY: int, items, f
             low = np.array(config.CHECKBOX_GREEN_HSV_LOW, dtype=np.uint8)
             high = np.array(config.CHECKBOX_GREEN_HSV_HIGH, dtype=np.uint8)
             contours, _ = cv2.findContours(cv2.inRange(hsv, low, high), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            greenBoxes = [cv2.boundingRect(c) for c in contours if cv2.contourArea(c) >= 250]
+            # Chỉ nhận nút tròn (gần vuông), bỏ thanh/nhãn màu xanh dài như 'Tiến Trình ...'
+            greenBoxes = [b for b in (cv2.boundingRect(c) for c in contours if cv2.contourArea(c) >= 250)
+                          if 0.6 <= b[2] / max(1, b[3]) <= 1.6]
             if greenBoxes:
                 gx, gy, gw, gh = max(greenBoxes, key=lambda b: b[2] * b[3])
                 gcx, gcy = gx + gw // 2, gy + gh // 2

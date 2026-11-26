@@ -223,6 +223,51 @@ class TestPausePromptRealScreen(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class TestAutoBattleCompleteRealScreen(unittest.TestCase):
+    """Ảnh thật màn 'Chiến Đấu Tự Động Hoàn Tất': từng bị nhận nhầm là popup tắt auto (do chữ 'Tiến Trình')
+    và tính vị trí X từ thanh xanh 'Tiến Trình Màn Chơi Đỉnh Cao' ra ngoài cửa sổ -> kẹt mãi."""
+
+    FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "auto_battle_complete_678x936.jpg")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ocr = OcrEngine()
+        cls.img = cv2.imread(cls.FIXTURE)
+
+    def test_not_detected_as_pause_popup(self):
+        items = self.ocr.scanImage(self.img, originX=1001, originY=30)
+        bot = MockBot(self.ocr, [])
+        bot._scanRect = (1001, 30, 678, 936)
+        self.assertIsNone(findPauseAutoConfirmCancel(bot, self.img, 1001, 30, items, auto_afk._findKey))
+
+    def test_loop_clicks_to_close_complete_screen_inside_window(self):
+        bot = MockBot(self.ocr, [self.img])
+        origWait = auto_afk._wait
+        auto_afk._wait = lambda b, s: True
+        try:
+            auto_afk.run_auto_afk(bot)
+        finally:
+            auto_afk._wait = origWait
+        self.assertEqual(len(bot.ctrl.clicks), 1)
+        x, y = bot.ctrl.clicks[0]
+        self.assertTrue(0 <= x < 678 and 0 <= y < 936, bot.ctrl.clicks)
+        self.assertFalse(any("Tắt chế độ" in m for m in bot.logs))
+
+    def test_refused_click_does_not_log_no_change(self):
+        bot = MockBot(self.ocr, [self.img])
+        bot.canInteractAt = lambda x, y, expectedRect=None: False
+        bot.peekScreen = lambda: self.img
+        origWait = auto_afk._wait
+        auto_afk._wait = lambda b, s: True
+        try:
+            auto_afk.run_auto_afk(bot)
+        finally:
+            auto_afk._wait = origWait
+        self.assertEqual(bot.ctrl.clicks, [])
+        self.assertTrue(any("hủy click" in m for m in bot.logs))
+        self.assertFalse(any("màn hình không đổi" in m for m in bot.logs))
+
+
 class TestCapturePerThread(unittest.TestCase):
 
     def test_each_thread_gets_own_mss(self):

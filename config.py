@@ -71,7 +71,7 @@ OCR_KEYWORDS = {
     "auto_progress": ["tu dong xu ly", "auto progress"],
     "auto_progress_part": ["xu ly"],
     "in_battle_auto": ["tu dong chien dau", "auto battling"],
-    "pause_auto_prompt": ["tat che do chien dau", "tien trinh afk"],
+    "pause_auto_prompt": ["tat che do chien dau"],
     "main_world_nav": ["ngoi nha huyen bi", "bang hoi", "trang vien", "cam nang mua giai"],
     "challenge_hl": ["huyen linh", "huyen linh sv", "thach dau huyen linh"],
     "fight": ["chien dau", "battle"],

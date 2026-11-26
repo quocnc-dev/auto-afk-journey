@@ -30,6 +30,14 @@ def _settle(bot, prevScreen, seconds: float) -> bool:
     return waitForScreenChange(bot, prevScreen, seconds, _wait)
 
 
+def _clickSettle(bot, x: int, y: int, rect, prevScreen, seconds: float) -> bool:
+    """Click rồi chờ màn hình đổi; click bị hủy (mất focus / ngoài cửa sổ) thì chỉ chờ ngắn rồi quét lại."""
+    if _safeClick(bot, x, y, rect):
+        return _settle(bot, prevScreen, seconds)
+    _wait(bot, 1.0)
+    return False
+
+
 def _scanGame(bot):
     """Chụp đúng cửa sổ game và chạy OCR; trả về screen=None nếu mất cửa sổ game."""
     if bot._stop_event.is_set():
@@ -64,13 +72,13 @@ def _handleDefeatSwitchMode(bot, screen, originX: int, originY: int, rect, items
     backHit = _findKey(bot, items, "back")
     if backHit:
         bot._log("🖱 Click nút 'Back' (OCR)...")
-        _safeClick(bot, backHit[0], backHit[1], rect)
+        clicked = _safeClick(bot, backHit[0], backHit[1], rect)
     else:
         retryItem = retryHit[3]
         backX = max(originX + 10, retryItem.x1 + int(retryItem.height * config.DEFEAT_BACK_HEIGHT_MULT))
         bot._log(f"🖱 Click tọa độ nút Back tương đối ({backX}, {retryHit[1]})...")
-        _safeClick(bot, backX, retryHit[1], rect)
-    _settle(bot, screen, 2.5)
+        clicked = _safeClick(bot, backX, retryHit[1], rect)
+    _settle(bot, screen, 2.5) if clicked else _wait(bot, 1.0)
     return newPrefer
 
 
@@ -108,10 +116,10 @@ def _applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsIte
     copyHit = _findKey(bot, statsItems, "copy_team")
     if copyHit:
         bot._log("🖱 Click 'Sao chép' đội hình...")
-        _safeClick(bot, copyHit[0], copyHit[1], statsRect)
+        clicked = _safeClick(bot, copyHit[0], copyHit[1], statsRect)
         if st is not None:
             st.teamSwitchedInStats = False
-        _settle(bot, statsScreen, 2.0)
+        _settle(bot, statsScreen, 2.0) if clicked else _wait(bot, 1.0)
     else:
         bot._log("⚠️ Không tìm thấy nút 'Sao chép', nhấn ESC.")
         _safeEscape(bot)
@@ -145,8 +153,7 @@ def _tryClickStageOption(bot, screen, items, rect, preferChallenge: bool) -> boo
         hit = _findKey(bot, items, keyName, excludeKeys=excludeKeys, extraExcludes=extraExcludes, wholePhrase=wholePhrase)
         if hit:
             bot._log(f"🖱 Click '{label}' tại ({hit[0]}, {hit[1]})...")
-            if _safeClick(bot, hit[0], hit[1], rect):
-                _settle(bot, screen, 2.5)
+            _clickSettle(bot, hit[0], hit[1], rect, screen, 2.5)
             return True
     return False
 
@@ -188,8 +195,7 @@ def run_auto_afk(bot):
                 bot._log(f"⚠️ Popup tắt auto vẫn còn sau {pauseRepeat} lần bấm X — lưu ảnh debug để kiểm tra vị trí nút.")
                 saveSnapshot(bot, "pause_prompt_stuck", screen, items, rect, extra={"click": list(pauseCancel)})
             bot._log("⚠️ Phát hiện hộp thoại 'Tắt chế độ Chiến Đấu Tự Động?'. Bấm X để tiếp tục auto...")
-            _safeClick(bot, pauseCancel[0], pauseCancel[1], rect)
-            _settle(bot, screen, 1.5)
+            _clickSettle(bot, pauseCancel[0], pauseCancel[1], rect, screen, 1.5)
             continue
 
         retryHit = _findKey(bot, items, "retry", wholePhrase=True)
@@ -219,11 +225,10 @@ def run_auto_afk(bot):
             isDefeat = bool(finishHit) or bool(_findKey(bot, items, "defeat"))
             bot._log("🖱 Phát hiện màn 'Hoàn Tất' / nút 'Đóng'. Click đóng quay lại chọn chế độ..." if isDefeat
                      else "🖱 Phát hiện popup có nút 'Đóng' (không phải màn thua). Click đóng...")
-            _safeClick(bot, target[0], target[1], rect)
             if isDefeat:
                 st.recordDefeat(fromMainDone=True)
             st.markProgress("auto_battle_complete" if isDefeat else "close_popup")
-            _settle(bot, screen, 2.5)
+            _clickSettle(bot, target[0], target[1], rect, screen, 2.5)
             continue
 
         autoProgress = findAutoProgressState(bot, items, _findKey)
@@ -231,8 +236,7 @@ def run_auto_afk(bot):
             st.markProgress("auto_progress_done")
             fails = st.recordDefeat(fromMainDone=True)
             bot._log(f"❌ Phát hiện 'Tự Động Xử Lý Xong!' (Thua lần {fails}/{FAIL_THRESHOLD_TO_SWITCH_MODE}). Click vào chạy lại...")
-            _safeClick(bot, autoProgress[1], autoProgress[2], rect)
-            _settle(bot, screen, 2.5)
+            _clickSettle(bot, autoProgress[1], autoProgress[2], rect, screen, 2.5)
             continue
 
         waitState = detectPassiveWaitState(bot, items, _findKey, autoProgress=autoProgress, rect=rect)
@@ -252,8 +256,7 @@ def run_auto_afk(bot):
                 st.markProgress("auto_battle")
                 st.onEnterBattle()
                 bot._log("🖱 Click 'Chiến Đấu Tự Động'...")
-                _safeClick(bot, autoHit[0], autoHit[1], rect)
-                _settle(bot, screen, 3.0)
+                _clickSettle(bot, autoHit[0], autoHit[1], rect, screen, 3.0)
                 continue
 
             st.resolveLobbySwitch(bot, FAIL_THRESHOLD_TO_SWITCH_MODE)
@@ -267,10 +270,9 @@ def run_auto_afk(bot):
             if victoryHit:
                 bot._log("🎉 Phát hiện màn hình CHIẾN THẮNG! Click tiếp tục...")
                 h, w = screen.shape[:2]
-                _safeClick(bot, originX + int(w * 0.5), originY + int(h * 0.5), rect)
                 st.onVictory()
                 st.markProgress("victory")
-                _settle(bot, screen, 3.0)
+                _clickSettle(bot, originX + int(w * 0.5), originY + int(h * 0.5), rect, screen, 3.0)
                 continue
 
         deepScan = isMainScreen or now - st.lastDeepScanTime >= config.LOBBY_DEEP_SCAN_INTERVAL
@@ -281,8 +283,7 @@ def run_auto_afk(bot):
             st.markProgress("afk_icon")
             st.lobbyClicksSameMode = 0
             bot._log("🖱 Tìm thấy sảnh chính. Click vào màn AFK...")
-            _safeClick(bot, afkHit[0], afkHit[1], rect)
-            _settle(bot, screen, 2.0)
+            _clickSettle(bot, afkHit[0], afkHit[1], rect, screen, 2.0)
             continue
 
         bot._log("⏳ Đang theo dõi trận đấu hoặc trạng thái game...")
