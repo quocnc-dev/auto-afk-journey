@@ -241,6 +241,41 @@ class TestP1P2Fixes(unittest.TestCase):
     def test_daily_challenge_does_not_match_huyen_linh(self):
         self.assertIsNone(self.ocr.findText([_item("Thách Đấu Hằng Ngày")], config.OCR_KEYWORDS["challenge_hl"]))
 
+    def test_launch_game_prompts_when_input_permission_missing(self):
+        prompts = []
+        eng = bot_engine.BotEngine(prompt_callback=lambda t, m: prompts.append((t, m)))
+        origFind, origFocus, origRect, origFg, origPerm, origReq, origOpen = (
+            bot_engine.findGameWindow,
+            bot_engine.focusGameWindow,
+            bot_engine.getClientRectScreen,
+            bot_engine.isWindowForeground,
+            bot_engine.hasInputPermission,
+            bot_engine.requestInputPermission,
+            bot_engine.openMacAccessibilitySettings,
+        )
+        try:
+            bot_engine.findGameWindow = lambda _: 999
+            bot_engine.focusGameWindow = lambda _: True
+            bot_engine.getClientRectScreen = lambda _: (0, 0, 1280, 720)
+            bot_engine.isWindowForeground = lambda _: True
+            bot_engine.hasInputPermission = lambda: False
+            bot_engine.requestInputPermission = lambda: False
+            bot_engine.openMacAccessibilitySettings = lambda: None
+            eng.state = bot_engine.State.LAUNCH_GAME
+            eng._state_launch_game()
+            self.assertEqual(eng.state, bot_engine.State.LAUNCH_GAME)
+            self.assertEqual(len(prompts), 1)
+        finally:
+            (
+                bot_engine.findGameWindow,
+                bot_engine.focusGameWindow,
+                bot_engine.getClientRectScreen,
+                bot_engine.isWindowForeground,
+                bot_engine.hasInputPermission,
+                bot_engine.requestInputPermission,
+                bot_engine.openMacAccessibilitySettings,
+            ) = (origFind, origFocus, origRect, origFg, origPerm, origReq, origOpen)
+
 
 if __name__ == "__main__":
     unittest.main()

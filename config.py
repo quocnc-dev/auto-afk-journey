@@ -111,6 +111,7 @@ MAX_LOG_LINES = 500                # Số dòng log tối đa hiển thị trên
 DELAY_AFTER_CLICK = 0.5
 DELAY_AFTER_SCREEN_CHANGE = 1.5
 DELAY_SHORT = 0.3
+MAC_CLICK_HOLD_SECONDS = 0.06       # Thời gian giữ chuột (giây) để game macOS/iPadOS nhận click
 
 # ========================
 #  CẬP NHẬT TỰ ĐỘNG (IN-APP UPDATE)

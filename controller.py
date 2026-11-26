@@ -9,6 +9,9 @@ import logging
 import sys
 import time
 
+import config
+from window_manager import hasInputPermission
+
 logger = logging.getLogger("AFK_Bot")
 
 MOUSEEVENTF_MOVE = 0x0001
@@ -92,20 +95,53 @@ if sys.platform == "win32":
 else:
     import pyautogui as _inputBackend
 
+    try:
+        import Quartz as _quartz
+    except Exception:
+        _quartz = None
+
     _inputBackend.FAILSAFE = False
     _inputBackend.PAUSE = 0.05
+    _lastCursorPos = [0, 0]
 
     def _moveCursor(x: int, y: int) -> bool:
+        if not hasInputPermission():
+            logger.warning("Thiếu quyền Accessibility trên macOS — hủy di chuyển chuột!")
+            return False
+        tx, ty = int(x), int(y)
+        _lastCursorPos[0], _lastCursorPos[1] = tx, ty
         try:
-            _inputBackend.moveTo(int(x), int(y))
+            if _quartz is not None:
+                _quartz.CGWarpMouseCursorPosition((tx, ty))
+                ev = _quartz.CGEventCreateMouseEvent(None, _quartz.kCGEventMouseMoved, (tx, ty), _quartz.kCGMouseButtonLeft)
+                _quartz.CGEventPost(_quartz.kCGHIDEventTap, ev)
+            else:
+                _inputBackend.moveTo(tx, ty)
             return True
         except Exception as exc:
             logger.warning(f"Di chuyển chuột thất bại tại ({x}, {y}): {exc}")
             return False
 
     def _sendMouseClick(button: str = "left") -> bool:
+        if not hasInputPermission():
+            logger.warning("Thiếu quyền Accessibility trên macOS — hủy click chuột!")
+            return False
         try:
-            _inputBackend.click(button=button)
+            if _quartz is not None:
+                btnMap = {
+                    "left": (_quartz.kCGEventLeftMouseDown, _quartz.kCGEventLeftMouseUp, _quartz.kCGMouseButtonLeft),
+                    "right": (_quartz.kCGEventRightMouseDown, _quartz.kCGEventRightMouseUp, _quartz.kCGMouseButtonRight),
+                    "middle": (_quartz.kCGEventOtherMouseDown, _quartz.kCGEventOtherMouseUp, _quartz.kCGMouseButtonCenter),
+                }
+                downType, upType, cgBtn = btnMap.get(button, btnMap["left"])
+                pos = (_lastCursorPos[0], _lastCursorPos[1])
+                _quartz.CGEventPost(_quartz.kCGHIDEventTap, _quartz.CGEventCreateMouseEvent(None, downType, pos, cgBtn))
+                time.sleep(config.MAC_CLICK_HOLD_SECONDS)
+                _quartz.CGEventPost(_quartz.kCGHIDEventTap, _quartz.CGEventCreateMouseEvent(None, upType, pos, cgBtn))
+            else:
+                _inputBackend.mouseDown(button=button)
+                time.sleep(config.MAC_CLICK_HOLD_SECONDS)
+                _inputBackend.mouseUp(button=button)
             return True
         except Exception as exc:
             logger.warning(f"Click thất bại ({button}): {exc}")

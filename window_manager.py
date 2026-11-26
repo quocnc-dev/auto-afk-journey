@@ -3,6 +3,7 @@ Quản lý cửa sổ game AFK Journey đa nền tảng (Windows dùng pywin32, 
 Chỉ nhận diện đúng cửa sổ game (khớp chính xác tiêu đề, kiểm tra foreground và tọa độ click).
 """
 
+import ctypes
 import logging
 import os
 import subprocess
@@ -177,3 +178,40 @@ def focusGameWindow(hwnd: int) -> bool:
                     except Exception as exc:
                         logger.debug(f"Không thể focus app macOS '{ownerName}': {exc}")
     return False
+
+
+def _loadMacTccLibs():
+    cg = ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
+    app = ctypes.CDLL("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")
+    cg.CGPreflightPostEventAccess.restype = ctypes.c_bool
+    cg.CGRequestPostEventAccess.restype = ctypes.c_bool
+    app.AXIsProcessTrusted.restype = ctypes.c_bool
+    return cg, app
+
+
+def hasInputPermission() -> bool:
+    """Kiểm tra quyền Accessibility / PostEvent trên macOS để tránh click bị hệ điều hành nuốt ngầm."""
+    if sys.platform != "darwin":
+        return True
+    try:
+        cg, app = _loadMacTccLibs()
+        return bool(cg.CGPreflightPostEventAccess() and app.AXIsProcessTrusted())
+    except Exception:
+        return True
+
+
+def requestInputPermission() -> bool:
+    """Yêu cầu macOS cấp quyền PostEvent/Accessibility cho ứng dụng."""
+    if sys.platform != "darwin":
+        return True
+    try:
+        cg, _ = _loadMacTccLibs()
+        return bool(cg.CGRequestPostEventAccess())
+    except Exception:
+        return False
+
+
+def openMacAccessibilitySettings():
+    """Mở mục Privacy & Security -> Accessibility trên macOS."""
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"])

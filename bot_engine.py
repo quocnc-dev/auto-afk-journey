@@ -24,8 +24,11 @@ from window_manager import (
     findGameWindow,
     focusGameWindow,
     getClientRectScreen,
+    hasInputPermission,
     isPointInClientRect,
     isWindowForeground,
+    openMacAccessibilitySettings,
+    requestInputPermission,
 )
 from modules.auto_afk import run_auto_afk
 
@@ -158,6 +161,22 @@ class BotEngine:
                 return
             rect = getClientRectScreen(hwnd)
             if rect and isWindowForeground(hwnd):
+                if not hasInputPermission():
+                    requestInputPermission()
+                    self._log("⚠️ Thiếu quyền Trợ năng (Accessibility) trên macOS — bot chưa thể click chuột!")
+                    accMsg = (
+                        "Bot chưa có quyền Trợ năng (Accessibility) trên macOS nên click chuột vào game bị chặn.\n\n"
+                        "Vui lòng:\n"
+                        "1. Mở System Settings → Privacy & Security → Accessibility.\n"
+                        "2. Bật quyền cho AFKJourneyBot (nếu vừa cập nhật bản mới, hãy tắt/xóa rồi thêm lại).\n"
+                        "3. Bấm OK dưới đây để bot kiểm tra lại."
+                    )
+                    if self.prompt_callback is not None:
+                        openMacAccessibilitySettings()
+                        self.prompt_callback("Yêu cầu quyền Trợ năng (macOS)", accMsg)
+                    else:
+                        self._stop_event.wait(3.0)
+                    return
                 self._log(f"✅ Đã bắt được cửa sổ '{config.GAME_WINDOW_TITLE}' ({rect[2]}x{rect[3]}), tiếp tục...")
                 self.state = State.CHECK_POPUP
                 return
