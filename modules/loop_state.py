@@ -20,6 +20,8 @@ class AfkLoopState:
     pendingModeExit: int = 0         # Vừa đổi mode do thua: còn N lần thử thoát màn chuẩn bị của mode cũ về sảnh
     lobbyClicksSameMode: int = 0
     preferChallenge: bool = True
+    stagesCleared: int = 0
+    stuckModeSwitches: int = 0
     lastStateKey: str | None = None
     lastProgressTime: float = field(default_factory=time.time)
     lastDeepScanTime: float = float("-inf")
@@ -44,19 +46,32 @@ class AfkLoopState:
         self.statsArrowClicks = 0
         self.lobbyClicksSameMode = 0
 
-    def onModeSwitched(self):
+    def onModeSwitched(self, countAsStuck: bool = True):
         """Đổi mode: bảng Thành tích là của màn khác -> chép lại từ team đầu tiên."""
         self.failedAttempts = 0
         self.defeatCounted = False
         self.teamCursor = 0
         self.needTeamChange = True
+        if countAsStuck:
+            self.stuckModeSwitches += 1
 
-    def onVictory(self):
+    def onVictory(self, clearedCount: int = 1):
         self.teamCursor = 0
         self.failedAttempts = 0
         self.defeatCounted = False
         self.statsArrowClicks = 0
         self.lobbyClicksSameMode = 0
+        self.stagesCleared += max(0, int(clearedCount))
+        self.stuckModeSwitches = 0
+
+    def isStuckBothModes(self, maxSwitches: int) -> bool:
+        return maxSwitches > 0 and self.stuckModeSwitches >= maxSwitches
+
+    def modeLabel(self) -> str:
+        return "Huyễn Linh" if self.preferChallenge else "Thường"
+
+    def summaryText(self, failThreshold: int) -> str:
+        return f"{self.modeLabel()} • +{self.stagesCleared} ải • {self.failedAttempts}/{failThreshold}"
 
     def resolveLobbySwitch(self, bot, failThreshold: int) -> bool:
         if self.failedAttempts >= failThreshold:
@@ -71,4 +86,28 @@ class AfkLoopState:
             modeName = "Thách Đấu Huyền Linh SV" if self.preferChallenge else "Chiến Đấu Thường"
             bot._log(f"⚠️ Nút ưu tiên không vào được trận (hết ải/khóa), fallback sang: {modeName}")
             self.lobbyClicksSameMode = 0
+            self.stuckModeSwitches += 1
         return self.preferChallenge
+
+
+def emitProgress(bot, st: AfkLoopState, failThreshold: int):
+    """Đẩy tóm tắt tiến độ hiện tại lên Dashboard UI (an toàn với MockBot không có callback)."""
+    cb = getattr(bot, "progress_callback", None)
+    if cb is not None:
+        try:
+            cb(st.summaryText(failThreshold))
+        except Exception:
+            pass
+
+
+def checkStuckStop(bot, st: AfkLoopState, failThreshold: int, maxStuck: int) -> bool:
+    """Cập nhật tiến độ và kiểm tra xem đã đổi qua lại cả 2 nhánh mà không qua ải nào chưa."""
+    emitProgress(bot, st, failThreshold)
+    if not st.isStuckBothModes(maxStuck):
+        return False
+    bot._log(
+        f"🛑 Đã đổi qua lại 2 chế độ {st.stuckModeSwitches} lần không vượt thêm ải nào "
+        f"(Tổng +{st.stagesCleared} ải). Tự dừng Auto AFK!"
+    )
+    bot.lastStopReason = f"Kẹt cả 2 chế độ ({st.stuckModeSwitches} lần đổi, +{st.stagesCleared} ải)"
+    return True

@@ -174,6 +174,18 @@ LOBBY_DEEP_SCAN_INTERVAL = 6.0
 MAC_CLICK_HOLD_SECONDS = 0.06       # Thời gian giữ chuột (giây) để game macOS/iPadOS nhận click
 
 # ========================
+#  TÙY CHỌN AUTO AFK & HỆ THỐNG
+# ========================
+DEFAULT_FAIL_THRESHOLD = 5
+FAIL_THRESHOLD_CHOICES = ("3", "5", "8", "10")
+MAX_STUCK_MODE_SWITCHES = 4         # Đổi chế độ qua lại N lần liên tiếp không qua ải -> tự dừng
+STOP_HOTKEY_LABEL = "F9"
+STOP_HOTKEY_WIN_VK = 0x78
+STOP_HOTKEY_MAC_KEYCODE = 101
+HOTKEY_POLL_INTERVAL = 0.15
+WEBHOOK_TIMEOUT = 10
+
+# ========================
 #  CẬP NHẬT TỰ ĐỘNG (IN-APP UPDATE)
 # ========================
 GITHUB_REPO = os.environ.get("AFK_BOT_GITHUB_REPO", "quocnc-dev/auto-afk-journey")
@@ -186,17 +198,18 @@ UPDATE_ASSET_WINDOWS = "afk-journey-bot-windows-x64.zip"
 BUILD_INFO_FILENAME = "build_info.json"
 
 
-def getGithubUpdateToken() -> str:
-    """Đọc AFK_BOT_GITHUB_TOKEN từ biến môi trường hoặc file .env.local (dùng cho repo Private)."""
-    envToken = os.environ.get("AFK_BOT_GITHUB_TOKEN", "").strip()
-    if envToken:
-        return envToken
+def _readEnvOrLocal(varName: str) -> str:
+    """Đọc biến từ môi trường hoặc file .env.local (không bao giờ hardcode secret)."""
+    envVal = os.environ.get(varName, "").strip()
+    if envVal:
+        return envVal
     candidates = [
         os.path.join(os.getcwd(), ".env.local"),
         os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.local"),
         os.path.join(os.path.dirname(sys.executable), ".env.local"),
         os.path.expanduser("~/.afk_journey_bot.env.local"),
     ]
+    prefix = f"{varName}="
     for path in candidates:
         if not os.path.isfile(path):
             continue
@@ -204,8 +217,18 @@ def getGithubUpdateToken() -> str:
             with open(path, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
-                    if line.startswith("AFK_BOT_GITHUB_TOKEN="):
+                    if line.startswith(prefix):
                         return line.split("=", 1)[1].strip().strip('"').strip("'")
         except Exception:
             pass
     return ""
+
+
+def getGithubUpdateToken() -> str:
+    """Đọc AFK_BOT_GITHUB_TOKEN từ biến môi trường hoặc file .env.local (dùng cho repo Private)."""
+    return _readEnvOrLocal("AFK_BOT_GITHUB_TOKEN")
+
+
+def getWebhookUrl() -> str:
+    """Đọc AFK_BOT_WEBHOOK_URL từ biến môi trường hoặc file .env.local (Discord/Telegram webhook)."""
+    return _readEnvOrLocal("AFK_BOT_WEBHOOK_URL")

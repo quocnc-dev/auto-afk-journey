@@ -54,6 +54,67 @@ def buildSidebar(app):
         checkmark_color="#FFFFFF",
     ).grid(row=4, column=0, padx=16, pady=4, sticky="w")
 
+    ctk.CTkFrame(sidebar, height=1, fg_color=COLORS["border"]).grid(row=5, column=0, sticky="ew", padx=12, pady=8)
+    ctk.CTkLabel(
+        sidebar, text="CÀI ĐẶT NHANH", font=ctk.CTkFont(size=10, weight="bold"), text_color=COLORS["text_muted"]
+    ).grid(row=6, column=0, padx=16, pady=(0, 6), sticky="w")
+
+    app.var_start_mode = ctk.StringVar(value="Huyễn Linh")
+    ctk.CTkSegmentedButton(
+        sidebar,
+        values=["Huyễn Linh", "Thường"],
+        variable=app.var_start_mode,
+        height=28,
+        font=ctk.CTkFont(size=12),
+        fg_color=COLORS["bg_card2"],
+        selected_color=COLORS["accent"],
+        selected_hover_color=COLORS["accent2"],
+        unselected_color=COLORS["bg_card2"],
+    ).grid(row=7, column=0, padx=16, pady=(0, 8), sticky="ew")
+
+    thrRow = ctk.CTkFrame(sidebar, fg_color="transparent")
+    thrRow.grid(row=8, column=0, padx=16, pady=(0, 6), sticky="ew")
+    ctk.CTkLabel(
+        thrRow, text="Đổi mode (thua):", font=ctk.CTkFont(size=12), text_color=COLORS["text_primary"]
+    ).pack(side="left")
+    app.var_fail_threshold = ctk.StringVar(value=str(config.DEFAULT_FAIL_THRESHOLD))
+    ctk.CTkOptionMenu(
+        thrRow,
+        values=list(config.FAIL_THRESHOLD_CHOICES),
+        variable=app.var_fail_threshold,
+        width=68,
+        height=26,
+        fg_color=COLORS["bg_card2"],
+        button_color=COLORS["accent"],
+        button_hover_color=COLORS["accent2"],
+    ).pack(side="right")
+
+    app.var_auto_stop_stuck = ctk.BooleanVar(value=True)
+    ctk.CTkCheckBox(
+        sidebar,
+        text="🛑  Dừng khi kẹt 2 nhánh",
+        variable=app.var_auto_stop_stuck,
+        font=ctk.CTkFont(size=12),
+        text_color=COLORS["text_primary"],
+        fg_color=COLORS["accent"],
+        hover_color=COLORS["accent2"],
+        border_color=COLORS["border"],
+        checkmark_color="#FFFFFF",
+    ).grid(row=9, column=0, padx=16, pady=3, sticky="w")
+
+    app.var_keep_awake = ctk.BooleanVar(value=True)
+    ctk.CTkCheckBox(
+        sidebar,
+        text="☀️  Chống ngủ màn hình",
+        variable=app.var_keep_awake,
+        font=ctk.CTkFont(size=12),
+        text_color=COLORS["text_primary"],
+        fg_color=COLORS["accent"],
+        hover_color=COLORS["accent2"],
+        border_color=COLORS["border"],
+        checkmark_color="#FFFFFF",
+    ).grid(row=10, column=0, padx=16, pady=3, sticky="w")
+
     ctk.CTkFrame(sidebar, height=1, fg_color=COLORS["border"]).grid(row=15, column=0, sticky="ew", padx=12, pady=8)
     ctk.CTkButton(
         sidebar,
@@ -64,6 +125,15 @@ def buildSidebar(app):
         anchor="w",
         command=app._open_log_dir,
     ).grid(row=17, column=0, padx=8, pady=2, sticky="ew")
+    ctk.CTkButton(
+        sidebar,
+        text="📸  Mở thư mục Debug",
+        fg_color="transparent",
+        hover_color=COLORS["bg_card2"],
+        text_color=COLORS["text_muted"],
+        anchor="w",
+        command=app._open_debug_dir,
+    ).grid(row=18, column=0, padx=8, pady=2, sticky="ew")
     app.btn_update = ctk.CTkButton(
         sidebar,
         text="🔄  Kiểm tra cập nhật",
@@ -73,8 +143,14 @@ def buildSidebar(app):
         anchor="w",
         command=app._on_check_update,
     )
-    app.btn_update.grid(row=18, column=0, padx=8, pady=2, sticky="ew")
+    app.btn_update.grid(row=19, column=0, padx=8, pady=2, sticky="ew")
 
+    ctk.CTkLabel(
+        sidebar,
+        text=f"⌨️ Phím dừng nhanh: {config.STOP_HOTKEY_LABEL}",
+        font=ctk.CTkFont(size=10),
+        text_color=COLORS["text_muted"],
+    ).grid(row=20, column=0, padx=16, pady=(8, 2), sticky="w")
     ctk.CTkLabel(
         sidebar,
         text=f"{updater.getDisplayVersion()} • AFK Journey Bot",
@@ -128,12 +204,12 @@ def buildMainArea(app):
     statsFrame.grid(row=1, column=0, padx=16, pady=(12, 8), sticky="ew")
     statsFrame.grid_columnconfigure((0, 1, 2), weight=1)
     app.stat_cards = {}
-    for col, (key, label, default, color) in enumerate([
-        ("current_task", "📋 Nhiệm vụ", "—", COLORS["accent"]),
-        ("run_time", "⏱ Thời gian", "00:00", COLORS["success"]),
-        ("bot_state", "🔧 Trạng thái", "IDLE", COLORS["text_muted"]),
+    for col, (key, label, default, color, fontSize) in enumerate([
+        ("current_task", "📋 Nhiệm vụ", "—", COLORS["accent"], 13),
+        ("run_time", "⏱ Thời gian", "00:00", COLORS["success"], 18),
+        ("bot_state", "🔧 Trạng thái", "IDLE", COLORS["text_muted"], 18),
     ]):
-        card = _makeStatCard(statsFrame, label, default, color)
+        card = _makeStatCard(statsFrame, label, default, color, fontSize=fontSize)
         card.grid(row=0, column=col, padx=(0 if col == 0 else 8, 0), sticky="ew")
         app.stat_cards[key] = card
 
@@ -153,12 +229,12 @@ def buildMainArea(app):
     buildPreviewTab(app, app.tab_view.tab("🖥 Preview"))
 
 
-def _makeStatCard(parent, label, value, accent):
+def _makeStatCard(parent, label, value, accent, fontSize=18):
     card = ctk.CTkFrame(parent, fg_color=COLORS["bg_card2"], corner_radius=10)
     ctk.CTkLabel(card, text=label, font=ctk.CTkFont(size=10), text_color=COLORS["text_muted"]).pack(
         anchor="w", padx=14, pady=(10, 0)
     )
-    valLbl = ctk.CTkLabel(card, text=value, font=ctk.CTkFont(size=18, weight="bold"), text_color=accent)
+    valLbl = ctk.CTkLabel(card, text=value, font=ctk.CTkFont(size=fontSize, weight="bold"), text_color=accent)
     valLbl.pack(anchor="w", padx=14, pady=(2, 10))
     card._value_label = valLbl
     return card

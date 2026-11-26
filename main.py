@@ -50,7 +50,11 @@ class AFKBotApp(ctk.CTk):
         self.minsize(860, 620)
         self.configure(fg_color=COLORS["bg_main"])
 
-        self.bot = BotEngine(log_callback=self._on_log, prompt_callback=self._on_prompt)
+        self.bot = BotEngine(
+            log_callback=self._on_log,
+            prompt_callback=self._on_prompt,
+            progress_callback=self._on_progress,
+        )
 
         self._log_lines = []
         self._is_running = False
@@ -62,6 +66,7 @@ class AFKBotApp(ctk.CTk):
 
         self._build_ui()
         self._update_status_idle()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(500, self._check_bot_status)
         self.after(1500, lambda: checkUpdateAsync(self, silent=True))
 
@@ -85,10 +90,23 @@ class AFKBotApp(ctk.CTk):
             messagebox.showwarning("Cảnh báo", "Hãy chọn nhiệm vụ Auto AFK!")
             return
 
+        try:
+            failThreshold = max(1, min(50, int(self.var_fail_threshold.get())))
+        except Exception:
+            failThreshold = config.DEFAULT_FAIL_THRESHOLD
+
+        startMode = self.var_start_mode.get()
+        self.bot.failThreshold = failThreshold
+        self.bot.preferChallengeStart = startMode == "Huyễn Linh"
+        self.bot.maxStuckSwitches = config.MAX_STUCK_MODE_SWITCHES if self.var_auto_stop_stuck.get() else 0
+        self.bot.keepAwakeEnabled = bool(self.var_keep_awake.get())
+        self.bot.notifyEnabled = True
+
         self._is_running = True
         self._start_time = time.time()
         self.btn_start.configure(state="disabled")
         self.btn_stop.configure(state="normal", text="■  Stop")
+        self._update_stat("current_task", f"{startMode} • +0 ải • 0/{failThreshold}")
         self._update_stat("bot_state", "RUNNING")
         self.status_dot.configure(text="● RUNNING", text_color=COLORS["success"])
         self.bot.start()
@@ -104,6 +122,9 @@ class AFKBotApp(ctk.CTk):
 
     def _on_log(self, msg):
         self.after(0, self._append_log, msg)
+
+    def _on_progress(self, text: str):
+        self.after(0, self._update_stat, "current_task", text)
 
     def _on_prompt(self, title: str, message: str) -> bool:
         """
@@ -200,6 +221,17 @@ class AFKBotApp(ctk.CTk):
         os.makedirs(logDir, exist_ok=True)
         self._open_path(logDir)
 
+    def _open_debug_dir(self):
+        os.makedirs(config.DEBUG_DIR, exist_ok=True)
+        self._open_path(config.DEBUG_DIR)
+
+    def _on_close(self):
+        if self._preview_stop_event:
+            self._preview_stop_event.set()
+        self.bot.stop()
+        self.bot._sysGuard.stop()
+        self.destroy()
+
     def _on_check_update(self):
         checkUpdateAsync(self, silent=False)
 
@@ -226,7 +258,11 @@ class AFKBotApp(ctk.CTk):
                 self.status_dot.configure(text="● ERROR", text_color=COLORS["danger"])
             else:
                 self._update_status_idle()
-        if self._is_running and not self.bot._stop_event.is_set():
+        elif self._is_running and self.bot._stop_event.is_set():
+            self.btn_stop.configure(state="disabled", text="⏳ Đang dừng...")
+            self._update_stat("bot_state", "STOPPING")
+            self.status_dot.configure(text="● STOPPING", text_color=COLORS["warning"])
+        elif self._is_running:
             self._update_stat("bot_state", self.bot.state.name)
         self.after(1000, self._check_bot_status)
 

@@ -12,12 +12,13 @@ from modules.afk_detectors import (
 from modules.debug_snapshot import saveSnapshot
 from modules.game_actions import describePopupCause, safeClick as _safeClick, safeEscape as _safeEscape
 from modules.game_actions import waitForScreenChange, waitScreenStable, waitWatchingFocus
+from modules.loop_state import checkStuckStop, emitProgress
 from modules.team_copy import applyStatsModalTeam as _applyStatsModalTeam, handlePickTeamInStats as _handlePickTeamInStats
 from modules.mode_switch import exitOldModePrep, handleDefeatSwitchMode as _handleDefeatSwitchMode
 
 logger = logging.getLogger("AFK_Bot.AutoAFK")
 
-FAIL_THRESHOLD_TO_SWITCH_MODE = 5
+FAIL_THRESHOLD_TO_SWITCH_MODE = config.DEFAULT_FAIL_THRESHOLD
 NO_ACTION_LIMIT_SECONDS = 1200
 PASSIVE_WAIT_KEYS = ("auto_progress_running", "in_battle_auto")
 
@@ -113,7 +114,10 @@ def run_auto_afk(bot):
     """Chạy Auto AFK; dừng an toàn nếu mất cửa sổ game quá lâu hoặc kẹt một trạng thái quá 20 phút."""
     bot._log("🚀 Bắt đầu vòng lặp Auto AFK bằng OCR...")
 
-    st = AfkLoopState()
+    failThreshold = max(1, int(getattr(bot, "failThreshold", FAIL_THRESHOLD_TO_SWITCH_MODE)))
+    maxStuck = max(0, int(getattr(bot, "maxStuckSwitches", 0)))
+    st = AfkLoopState(preferChallenge=bool(getattr(bot, "preferChallengeStart", True)))
+    emitProgress(bot, st, failThreshold)
     missingWindowSince, lastFrame, unknownStreak, pauseRepeat = None, (None, None, None), 0, 0
 
     while not bot._stop_event.is_set():
@@ -166,12 +170,15 @@ def run_auto_afk(bot):
         if retryHit:
             st.markProgress("retry")
             fails = st.recordDefeat(fromMainDone=False)
-            bot._log(f"❌ Trận đấu THẤT BẠI (Lần thứ {fails}/{FAIL_THRESHOLD_TO_SWITCH_MODE} liên tiếp)!")
-            if fails >= FAIL_THRESHOLD_TO_SWITCH_MODE:
+            bot._log(f"❌ Trận đấu THẤT BẠI (Lần thứ {fails}/{failThreshold} liên tiếp)!")
+            if fails >= failThreshold:
                 st.preferChallenge = _handleDefeatSwitchMode(bot, screen, originX, originY, rect, items, retryHit, st.preferChallenge)
                 st.onModeSwitched()
                 st.pendingModeExit = config.MODE_EXIT_ATTEMPTS  # Nếu chưa về được sảnh thì thoát khỏi màn chuẩn bị của mode cũ
+                if checkStuckStop(bot, st, failThreshold, maxStuck):
+                    return True
                 continue
+            emitProgress(bot, st, failThreshold)
             bot._log("🖱 Click 'Thử Lại'...")
             if _safeClick(bot, retryHit[0], retryHit[1], rect) and _settle(bot, screen, 2.5):
                 _handlePickTeamInStats(bot, st)
@@ -199,13 +206,14 @@ def run_auto_afk(bot):
             cleared = parseStagesCleared(items) if finishHit else None
             if cleared:
                 # Auto đã thắng qua >= 1 màn rồi mới dừng -> chuỗi thua liên tiếp phải tính lại từ đầu
-                st.onVictory()
+                st.onVictory(cleared)
                 bot._log(f"🎉 Auto đã vượt {cleared} màn trước khi dừng — reset chuỗi thua liên tiếp.")
             if isDefeat:
                 fails = st.recordDefeat(fromMainDone=True)
-                bot._log(f"🖱 Màn 'Hoàn Tất' (thua lần {fails}/{FAIL_THRESHOLD_TO_SWITCH_MODE} liên tiếp). Click đóng quay lại chọn chế độ...")
+                bot._log(f"🖱 Màn 'Hoàn Tất' (thua lần {fails}/{failThreshold} liên tiếp). Click đóng quay lại chọn chế độ...")
             else:
                 bot._log("🖱 Phát hiện popup có nút 'Đóng' (không phải màn thua). Click đóng...")
+            emitProgress(bot, st, failThreshold)
             st.markProgress("auto_battle_complete" if isDefeat else "close_popup")
             _clickSettle(bot, target[0], target[1], rect, screen, 2.5)
             continue
@@ -214,7 +222,8 @@ def run_auto_afk(bot):
         if autoProgress is not None and autoProgress[0]:
             st.markProgress("auto_progress_done")
             fails = st.recordDefeat(fromMainDone=True)
-            bot._log(f"❌ Phát hiện 'Tự Động Xử Lý Xong!' (Thua lần {fails}/{FAIL_THRESHOLD_TO_SWITCH_MODE}). Click vào chạy lại...")
+            emitProgress(bot, st, failThreshold)
+            bot._log(f"❌ Phát hiện 'Tự Động Xử Lý Xong!' (Thua lần {fails}/{failThreshold}). Click vào chạy lại...")
             _clickSettle(bot, autoProgress[1], autoProgress[2], rect, screen, 2.5)
             continue
 
@@ -247,7 +256,10 @@ def run_auto_afk(bot):
                 _clickSettle(bot, autoHit[0], autoHit[1], rect, screen, 3.0)
                 continue
 
-            st.resolveLobbySwitch(bot, FAIL_THRESHOLD_TO_SWITCH_MODE)
+            prevSwitches = st.stuckModeSwitches
+            st.resolveLobbySwitch(bot, failThreshold)
+            if st.stuckModeSwitches != prevSwitches and checkStuckStop(bot, st, failThreshold, maxStuck):
+                return True
             if _tryClickStageOption(bot, screen, items, rect, st.preferChallenge):
                 st.pendingModeExit = 0  # Đã ở sảnh chọn chế độ
                 st.defeatCounted = False
@@ -259,7 +271,8 @@ def run_auto_afk(bot):
             if victoryHit:
                 bot._log("🎉 Phát hiện màn hình CHIẾN THẮNG! Click tiếp tục...")
                 h, w = screen.shape[:2]
-                st.onVictory()
+                st.onVictory(1)
+                emitProgress(bot, st, failThreshold)
                 st.markProgress("victory")
                 _clickSettle(bot, originX + int(w * 0.5), originY + int(h * 0.5), rect, screen, 3.0)
                 continue

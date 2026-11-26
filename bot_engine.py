@@ -33,6 +33,7 @@ from window_manager import (
 )
 from modules.auto_afk import run_auto_afk
 from modules.debug_snapshot import DebugSnapshotter, IssueTracker, slugify
+from modules.system_helpers import BotSystemGuard
 
 logger = logging.getLogger("AFK_Bot")
 
@@ -51,11 +52,7 @@ class BotEngine:
     Chạy trên thread riêng, giao tiếp với UI qua callback.
     """
 
-    def __init__(
-        self,
-        log_callback: Callable[[str], None] = None,
-        prompt_callback: Callable[[str, str], None] = None,
-    ):
+    def __init__(self, log_callback: Callable[[str], None] = None, prompt_callback=None, progress_callback=None):
         self.capture = ScreenCapture()
         self.ocr = OcrEngine(config.OCR_FUZZY_THRESHOLD)
         self.ctrl = Controller(delay_after_click=config.DELAY_AFTER_CLICK)
@@ -67,12 +64,16 @@ class BotEngine:
 
         self.log_callback = log_callback or (lambda msg: None)
         self.prompt_callback = prompt_callback
+        self.progress_callback = progress_callback
         self.state = State.IDLE
 
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
         self.task_auto_afk = True
+        self.failThreshold, self.preferChallengeStart = config.DEFAULT_FAIL_THRESHOLD, True
+        self.maxStuckSwitches, self.keepAwakeEnabled, self.notifyEnabled = config.MAX_STUCK_MODE_SWITCHES, True, False
+        self.lastStopReason, self._sysGuard = "", BotSystemGuard()
 
     def start(self):
         """Bắt đầu chạy bot"""
@@ -89,6 +90,11 @@ class BotEngine:
         """Dừng bot (graceful)"""
         self._stop_event.set()
         self._log("🛑 Đang dừng bot...")
+
+    def _onHotkeyStop(self):
+        if not self._stop_event.is_set():
+            self._log(f"⌨️ Đã nhấn phím tắt {config.STOP_HOTKEY_LABEL} — dừng bot khẩn cấp!")
+            self.stop()
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
@@ -137,6 +143,8 @@ class BotEngine:
         return bool(hwnd) and isWindowForeground(hwnd)
 
     def _run_loop(self):
+        self.lastStopReason = ""
+        self._sysGuard.start(self.keepAwakeEnabled, self._onHotkeyStop)
         try:
             while not self._stop_event.is_set():
                 if self.state == State.LAUNCH_GAME:
@@ -157,8 +165,10 @@ class BotEngine:
             self.saveIssueBundle("crash", str(e), tracebackText=traceback.format_exc())
             self.state = State.ERROR
         finally:
+            self._sysGuard.stop()
             if self._stop_event.is_set() and self.state not in (State.ERROR, State.DONE):
                 self.state = State.IDLE
+            self._sysGuard.notifyFinish(self.state.name, self.lastStopReason, self.notifyEnabled)
             self._log("🔴 Bot đã dừng.")
 
     def _state_launch_game(self):
