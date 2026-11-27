@@ -176,7 +176,7 @@ class TestReviewFixes(unittest.TestCase):
             os.environ.pop("AFK_BOT_GITHUB_REPO", None)
             import importlib
             importlib.reload(config)
-            self.assertEqual(config.GITHUB_REPO, "betonamu/auto-afk-journey")
+            self.assertEqual(config.GITHUB_REPO, "quocnc-dev/auto-afk-journey")
 
 
 if __name__ == "__main__":

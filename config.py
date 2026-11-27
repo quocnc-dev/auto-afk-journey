@@ -189,7 +189,7 @@ WEBHOOK_TIMEOUT = 10
 # ========================
 #  CẬP NHẬT TỰ ĐỘNG (IN-APP UPDATE)
 # ========================
-GITHUB_REPO = os.environ.get("AFK_BOT_GITHUB_REPO", "betonamu/auto-afk-journey")
+GITHUB_REPO = os.environ.get("AFK_BOT_GITHUB_REPO", "quocnc-dev/auto-afk-journey")
 GITHUB_RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 UPDATE_HTTP_TIMEOUT = 15
 UPDATE_DOWNLOAD_TIMEOUT = 180
