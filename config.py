@@ -114,7 +114,9 @@ CHALLENGE_HL_EXTRA_EXCLUDES = ["man choi", "dinh cao", "sinh vat", "ngoi nha", "
 IN_BATTLE_EXTRA_EXCLUDES = ["che do"]
 
 # Tỷ lệ dịch chuyển tương đối (theo kích thước cửa sổ hoặc chiều cao chữ)
-DEFEAT_BACK_HEIGHT_MULT = -3.2      # Dịch trái theo chiều cao chữ 'Thử Lại' (hỗ trợ cả màn dọc iPad)
+DEFEAT_BACK_X_RATIO = 0.075         # Nút '←' ở màn thua: tâm cách mép trái cửa sổ ~7.5% bề rộng (đo trên ảnh thật)
+DEFEAT_BACK_ROI_RIGHT = 0.20        # Vùng dò nét mũi tên: từ mép trái tới 20% bề rộng (chưa chạm nút thống kê)
+DEFEAT_BACK_DARK_V = 170            # Nét mũi tên tối (V < N) trên nền nút trắng kem
 CHECKBOX_LEFT_HEIGHT_MULT = 1.15    # Tâm checkbox nằm bên trái chữ ~1.15 lần chiều cao dòng chữ
 CHECKBOX_SAMPLE_HEIGHT_MULT = 0.45
 
