@@ -92,22 +92,24 @@ def _confirmStillThere(bot, keyName: str, **findArgs) -> bool:
     return screen is not None and bool(_findKey(bot, items, keyName, **findArgs))
 
 
-def _tryClickStageOption(bot, screen, items, rect, preferChallenge: bool) -> bool:
-    """Thử vào trận ở sảnh AFK theo thứ tự ưu tiên."""
+def _tryClickStageOption(bot, screen, items, rect, preferChallenge: bool) -> bool | None:
+    """Thử vào trận ở sảnh AFK; trả về True nếu đã click, False nếu bị hủy focus/Stop, None nếu không thấy nút."""
     fightArgs = ("fight", "Chiến Đấu thường", config.FIGHT_EXCLUDE_KEYS, config.FIGHT_EXTRA_EXCLUDES, True)
     challengeArgs = ("challenge_hl", "Thách Đấu Huyền Linh SV", None, config.CHALLENGE_HL_EXTRA_EXCLUDES, False)
     order = [challengeArgs, fightArgs] if preferChallenge else [fightArgs, challengeArgs]
-
     for keyName, label, excludeKeys, extraExcludes, wholePhrase in order:
         hit = _findKey(bot, items, keyName, excludeKeys=excludeKeys, extraExcludes=extraExcludes, wholePhrase=wholePhrase)
         if hit:
             bot._log(f"🖱 Click '{label}' tại ({hit[0]}, {hit[1]})...")
-            if _clickSettle(bot, hit[0], hit[1], rect, screen, 2.5):
+            if not _safeClick(bot, hit[0], hit[1], rect):
+                _wait(bot, 1.0)
+                return False
+            if _settle(bot, screen, 2.5):
                 # Game load chậm: nút còn trên màn chưa chắc là bấm hụt -> chờ nút biến mất trước khi tính lại
                 _waitKeyGone(bot, keyName, config.STAGE_ENTER_WAIT, excludeKeys=excludeKeys,
                              extraExcludes=extraExcludes, wholePhrase=wholePhrase)
             return True
-    return False
+    return None
 
 
 def run_auto_afk(bot):
@@ -185,9 +187,7 @@ def run_auto_afk(bot):
             continue
 
         if _findKey(bot, items, "copy_team"):
-            st.markProgress("copy_team")
-            _applyStatsModalTeam(bot, screen, originX, originY, rect, items, st=st)
-            continue
+            st.markProgress("copy_team"); _applyStatsModalTeam(bot, screen, originX, originY, rect, items, st=st); continue
 
         # Đang trong trận (đồng hồ / thanh 'Tự Động Chiến Đấu') thì không có màn Hoàn Tất hay nút Đóng thật
         inBattle = findInBattleAuto(bot, items, _findKey, rect=rect)
@@ -220,9 +220,7 @@ def run_auto_afk(bot):
 
         autoProgress = findAutoProgressState(bot, items, _findKey)
         if autoProgress is not None and autoProgress[0]:
-            st.markProgress("auto_progress_done")
-            fails = st.recordDefeat(fromMainDone=True)
-            emitProgress(bot, st, failThreshold)
+            st.markProgress("auto_progress_done"); fails = st.recordDefeat(fromMainDone=True); emitProgress(bot, st, failThreshold)
             bot._log(f"❌ Phát hiện 'Tự Động Xử Lý Xong!' (Thua lần {fails}/{failThreshold}). Click vào chạy lại...")
             _clickSettle(bot, autoProgress[1], autoProgress[2], rect, screen, 2.5)
             continue
@@ -260,11 +258,12 @@ def run_auto_afk(bot):
             st.resolveLobbySwitch(bot, failThreshold)
             if st.stuckModeSwitches != prevSwitches and checkStuckStop(bot, st, failThreshold, maxStuck):
                 return True
-            if _tryClickStageOption(bot, screen, items, rect, st.preferChallenge):
+            stageRes = _tryClickStageOption(bot, screen, items, rect, st.preferChallenge)
+            if stageRes is not None:
                 st.pendingModeExit = 0  # Đã ở sảnh chọn chế độ
-                st.defeatCounted = False
-                st.lobbyClicksSameMode += 1
-                st.markProgress("stage_option")
+                if stageRes:
+                    st.defeatCounted, st.lobbyClicksSameMode = False, st.lobbyClicksSameMode + 1
+                    st.markProgress("stage_option")
                 continue
 
             victoryHit = _findKey(bot, items, "victory")

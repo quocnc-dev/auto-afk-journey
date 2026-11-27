@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass
@@ -22,6 +23,21 @@ from typing import Callable
 import config
 
 logger = logging.getLogger("AFK_Bot.Updater")
+
+
+class _NoAuthRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Gỡ header Authorization khi redirect sang host khác (vd GitHub API -> S3 CDN)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        newReq = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if newReq is not None:
+            oldHost = urllib.parse.urlsplit(req.full_url).netloc.lower()
+            newHost = urllib.parse.urlsplit(newurl).netloc.lower()
+            if oldHost != newHost:
+                for hdr in list(newReq.headers) + list(newReq.unredirected_hdrs):
+                    if hdr.lower() == "authorization":
+                        newReq.remove_header(hdr)
+        return newReq
 
 
 @dataclass
@@ -41,12 +57,7 @@ class UpdateInfo:
 
 def getCurrentBuildInfo() -> dict:
     """Đọc metadata build_info.json đóng gói kèm app; fallback về APP_VERSION."""
-    fallback = {
-        "tag": f"v{config.APP_VERSION}",
-        "sha": "",
-        "run_number": 0,
-        "is_packaged": bool(getattr(sys, "frozen", False)),
-    }
+    fallback = {"tag": f"v{config.APP_VERSION}", "sha": "", "run_number": 0, "is_packaged": bool(getattr(sys, "frozen", False))}
     infoPath = os.path.join(config.BUNDLE_DIR, config.BUILD_INFO_FILENAME)
     if not os.path.exists(infoPath):
         return fallback
@@ -92,9 +103,7 @@ def getPlatformAssetName(platform: str | None = None) -> str:
     plat = platform or sys.platform
     if plat == "win32":
         return config.UPDATE_ASSET_WINDOWS
-    if plat == "darwin":
-        return config.UPDATE_ASSET_DARWIN
-    return ""
+    return config.UPDATE_ASSET_DARWIN if plat == "darwin" else ""
 
 
 def buildSslContext() -> ssl.SSLContext:
@@ -128,9 +137,7 @@ def checkForUpdate(releaseUrl: str | None = None) -> UpdateInfo:
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
-            raise RuntimeError(
-                "Không tìm thấy GitHub Release (404). Nếu repo đang Private, hãy chuyển Public hoặc đặt AFK_BOT_GITHUB_TOKEN trong .env.local."
-            ) from exc
+            raise RuntimeError("Không tìm thấy GitHub Release (404). Nếu repo đang Private, hãy chuyển Public hoặc đặt AFK_BOT_GITHUB_TOKEN trong .env.local.") from exc
         raise
 
     latestTag = str(data.get("tag_name") or data.get("name") or "")
@@ -142,14 +149,9 @@ def checkForUpdate(releaseUrl: str | None = None) -> UpdateInfo:
             break
 
     return UpdateInfo(
-        currentTag=currentTag,
-        latestTag=latestTag,
-        hasUpdate=isNewerRelease(currentTag, latestTag),
-        downloadUrl=downloadUrl,
-        assetName=expectedAsset,
-        assetSize=assetSize,
-        releaseNotes=str(data.get("body") or "").strip(),
-        htmlUrl=str(data.get("html_url") or ""),
+        currentTag=currentTag, latestTag=latestTag, hasUpdate=isNewerRelease(currentTag, latestTag),
+        downloadUrl=downloadUrl, assetName=expectedAsset, assetSize=assetSize,
+        releaseNotes=str(data.get("body") or "").strip(), htmlUrl=str(data.get("html_url") or ""),
         isPackaged=bool(getattr(sys, "frozen", False)),
     )
 
@@ -164,17 +166,13 @@ def validateZipEntries(zipPath: str, destDir: str):
                 raise ValueError(f"Đường dẫn zip không an toàn: {member.filename}")
 
 
-def downloadAndExtractUpdate(
-    downloadUrl: str,
-    progressCb: Callable[[int, int], None] | None = None,
-) -> tuple[str, str]:
+def downloadAndExtractUpdate(downloadUrl: str, progressCb: Callable[[int, int], None] | None = None) -> tuple[str, str]:
     """Tải file zip cập nhật về thư mục tạm và giải nén an toàn."""
     if not downloadUrl.startswith("https://"):
         raise ValueError("URL tải bản cập nhật phải dùng HTTPS.")
 
     workDir = tempfile.mkdtemp(prefix="afk_bot_update_")
-    zipPath = os.path.join(workDir, "update.zip")
-    extractDir = os.path.join(workDir, "extracted")
+    zipPath, extractDir = os.path.join(workDir, "update.zip"), os.path.join(workDir, "extracted")
     os.makedirs(extractDir, exist_ok=True)
 
     try:
@@ -184,7 +182,8 @@ def downloadAndExtractUpdate(
             dlHeaders["Authorization"] = f"Bearer {token}"
             dlHeaders["Accept"] = "application/octet-stream"
         req = urllib.request.Request(downloadUrl, headers=dlHeaders)
-        with urllib.request.urlopen(req, timeout=config.UPDATE_DOWNLOAD_TIMEOUT, context=buildSslContext()) as resp:
+        opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=buildSslContext()), _NoAuthRedirectHandler())
+        with opener.open(req, timeout=config.UPDATE_DOWNLOAD_TIMEOUT) as resp:
             totalSize = int(resp.headers.get("Content-Length") or 0)
             downloaded = 0
             with open(zipPath, "wb") as outFile:
@@ -242,9 +241,7 @@ def buildWindowsUpdateScript(pid: int, sourceDir: str, targetDir: str, workDir: 
     """Tạo nội dung batch script chờ thoát PID, ghi đè file mới và mở lại AFKJourneyBot.exe."""
     exePath = os.path.join(targetDir, "AFKJourneyBot.exe")
     return "\r\n".join([
-        "@echo off",
-        "setlocal",
-        "set /a tries=0",
+        "@echo off", "chcp 65001 >NUL", "setlocal", "set /a tries=0",
         ":wait_loop",
         f'tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL',
         "if errorlevel 1 goto copy_files",

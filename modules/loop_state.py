@@ -35,7 +35,8 @@ class AfkLoopState:
     def recordDefeat(self, fromMainDone: bool = False) -> int:
         if not self.defeatCounted:
             self.failedAttempts += 1
-        self.defeatCounted = fromMainDone
+        # Đánh dấu đã đếm cho trận thua hiện tại (tránh cộng dồn nếu click 'Thử Lại' trượt/mất focus)
+        self.defeatCounted = True
         self.statsArrowClicks = 0
         self.lobbyClicksSameMode = 0
         self.needTeamChange = True

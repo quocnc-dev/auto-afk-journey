@@ -205,6 +205,8 @@ class AFKBotApp(ctk.CTk):
     def _update_preview_ui(self, img, fps, gen=None):
         if not self._preview_active or (gen is not None and gen != self._preview_gen):
             return
+        if not isinstance(img, ctk.CTkImage):
+            img = ctk.CTkImage(light_image=img, dark_image=img, size=img.size)
         self.preview_label.configure(image=img, text="")
         self.preview_fps_lbl.configure(text=f"FPS: {fps:.1f}")
 

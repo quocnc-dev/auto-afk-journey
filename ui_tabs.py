@@ -104,6 +104,8 @@ def buildPreviewTab(app, tab):
         corner_radius=8,
     )
     app.preview_label.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
+    app._preview_size = (600, 380)
+    app.preview_label.bind("<Configure>", lambda e: setattr(app, "_preview_size", (max(1, e.width), max(1, e.height))))
 
 
 def runPreviewWorker(app, stopEvent: threading.Event, gen: int):
@@ -115,20 +117,18 @@ def runPreviewWorker(app, stopEvent: threading.Event, gen: int):
     while not stopEvent.is_set() and app._preview_active and app._preview_gen == gen:
         try:
             screen = capture.capture_full()
-            widgetW = app.preview_label.winfo_width() or 600
-            widgetH = app.preview_label.winfo_height() or 380
+            widgetW, widgetH = getattr(app, "_preview_size", (600, 380))
             h, w = screen.shape[:2]
             scale = min(widgetW / w, widgetH / h, 1.0)
             newW, newH = max(1, int(w * scale)), max(1, int(h * scale))
             resized = cv2.resize(screen, (newW, newH))
             resizedRgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
             pilImg = Image.fromarray(resizedRgb)
-            ctkImg = ctk.CTkImage(light_image=pilImg, dark_image=pilImg, size=(newW, newH))
             now = time.time()
             fps = 1.0 / max(now - lastTime, 0.001)
             lastTime = now
             if not stopEvent.is_set() and app._preview_gen == gen:
-                app.after(0, app._update_preview_ui, ctkImg, fps, gen)
+                app.after(0, app._update_preview_ui, pilImg, fps, gen)
         except Exception:
             pass
         stopEvent.wait(0.1)

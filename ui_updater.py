@@ -3,11 +3,34 @@
 """
 
 import threading
+import time
 import webbrowser
 from tkinter import messagebox
 
+import config
 import updater
 from ui_tabs import COLORS
+
+
+def makeProgressThrottler(onEmit, minInterval: float | None = None):
+    """Giới hạn tần suất cập nhật tiến độ tải lên UI theo % và khoảng thời gian tối thiểu."""
+    interval = config.UPDATE_PROGRESS_MIN_INTERVAL if minInterval is None else float(minInterval)
+    state = {"lastTime": float("-inf"), "lastPct": -1}
+
+    def onProgress(done: int, total: int):
+        now = time.monotonic()
+        pct = int(done * 100 / total) if total > 0 else -1
+        isFinished = total > 0 and done >= total
+        if not isFinished:
+            if now - state["lastTime"] < interval:
+                return
+            if pct >= 0 and pct == state["lastPct"]:
+                return
+        state["lastTime"] = now
+        state["lastPct"] = pct
+        onEmit(done, total)
+
+    return onProgress
 
 
 def _setUpdateButton(app, text: str, state: str = "normal", fgColor: str = "transparent", textColor: str | None = None):
@@ -120,9 +143,11 @@ def _startDownloadAndApply(app, info: updater.UpdateInfo):
     _setUpdateButton(app, "⬇ Đang tải 0%...", state="disabled", textColor=COLORS["accent"])
     app._on_log(f"[Updater] Đang tải {info.latestTag} ({info.assetName})...")
 
-    def onProgress(done: int, total: int):
+    def emitProgress(done: int, total: int):
         label = f"⬇ Đang tải {int(done * 100 / total)}%..." if total > 0 else f"⬇ Đã tải {done // 1024} KB..."
         app.after(0, _setUpdateButton, app, label, "disabled", COLORS["bg_card2"], COLORS["accent"])
+
+    onProgress = makeProgressThrottler(emitProgress)
 
     def worker():
         try:

@@ -115,9 +115,11 @@ def findPauseAutoConfirmCancel(bot, screen, originX: int, originY: int, items, f
         return None  # Màn 'Chiến Đấu Tự Động Hoàn Tất' không phải popup tắt auto
     pItem = hit[3]
     imgH, imgW = screen.shape[:2]
-    # 1) OCR thường đọc được luôn chữ 'X' trên nút hủy -> chính xác nhất
+    # 1) OCR thường đọc được luôn chữ 'X' trên nút hủy -> chính xác nhất (giới hạn khoảng cách ngang)
+    maxDx = imgW * config.PAUSE_CANCEL_X_MAX_DX_RATIO
     xItems = [it for it in items if it.normText.strip() in ("x", "×")
-              and pItem.y2 < it.centerY <= pItem.y2 + imgH * 0.30]
+              and pItem.y2 < it.centerY <= pItem.y2 + imgH * 0.30
+              and abs(it.centerX - pItem.centerX) <= maxDx]
     if xItems:
         xi = min(xItems, key=lambda it: abs(it.centerX - pItem.centerX))
         return (xi.centerX, xi.centerY)

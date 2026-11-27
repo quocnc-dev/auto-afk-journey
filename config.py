@@ -56,6 +56,7 @@ AUTO_PROGRESS_MAX_DX_HEIGHT_MULT = 4
 AUTO_PROGRESS_MAX_DY_HEIGHT_MULT = 4.0
 AUTO_PROGRESS_SPLIT_DY_MULT = 2.5
 PAUSE_CANCEL_OFFSET_MULT = 1.35     # Nút X của popup tắt auto: cách tâm nút ✓ xanh N lần bề rộng nút ✓ về bên trái
+PAUSE_CANCEL_X_MAX_DX_RATIO = 0.30  # Chỉ nhận chữ 'x' OCR nếu nằm trong vùng giữa popup (tránh khớp nhầm rìa màn)
 PAUSE_PROMPT_STUCK_REPEAT = 3       # Popup tắt auto còn sau N lần bấm X liên tiếp -> lưu ảnh debug
 LAUNCH_FOREGROUND_WAIT = 20.0       # Sau khi bấm OK hộp thoại 'mở / focus game': chờ người dùng bấm vào game tối đa N giây
 POPUP_SETTLE_MAX_WAIT = 1.2         # Popup vừa hiện còn đang trượt vào: chờ đứng yên tối đa N giây rồi mới dò lại nút X
@@ -188,11 +189,12 @@ WEBHOOK_TIMEOUT = 10
 # ========================
 #  CẬP NHẬT TỰ ĐỘNG (IN-APP UPDATE)
 # ========================
-GITHUB_REPO = os.environ.get("AFK_BOT_GITHUB_REPO", "quocnc-dev/auto-afk-journey")
+GITHUB_REPO = os.environ.get("AFK_BOT_GITHUB_REPO", "betonamu/auto-afk-journey")
 GITHUB_RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 UPDATE_HTTP_TIMEOUT = 15
 UPDATE_DOWNLOAD_TIMEOUT = 180
 UPDATE_CHUNK_SIZE = 65536
+UPDATE_PROGRESS_MIN_INTERVAL = 0.1  # Giây tối thiểu giữa 2 lần cập nhật % tải lên UI Tkinter
 UPDATE_ASSET_DARWIN = "afk-journey-bot-macos-arm64.zip"
 UPDATE_ASSET_WINDOWS = "afk-journey-bot-windows-x64.zip"
 BUILD_INFO_FILENAME = "build_info.json"

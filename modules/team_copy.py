@@ -73,12 +73,15 @@ def applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsItem
     targetTeam = teamMoves + 1
     # Lần trước bị hủy giữa chừng (mất focus...) thì bảng đã lệch sẵn vài team -> chỉ bấm phần còn thiếu
     clicksDone = st.statsArrowClicks if st is not None else 0
+    exhausted = False
     if teamMoves > clicksDone:
         nextArrow = findNextTeamArrow(statsScreen, ox, oy)
         if nextArrow:
             _snapshotIfArrowMoved(bot, nextArrow, statsScreen, statsItems, statsRect)
-            bot._log(f"🖱 Click chuyển sang Team tiếp theo ({teamMoves - clicksDone} lần)...")
-            for _ in range(teamMoves - clicksDone):
+            remaining = teamMoves - clicksDone
+            bot._log(f"🖱 Click chuyển sang Team tiếp theo ({remaining} lần)...")
+            peek = getattr(bot, "peekScreen", None)
+            for idx in range(remaining):
                 if not core._safeClick(bot, nextArrow[0], nextArrow[1], statsRect):
                     return
                 if st is not None:
@@ -86,11 +89,23 @@ def applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsItem
                 # Chỉ đổi ảnh chân dung team (vùng nhỏ) -> chờ ngắn cố định thay vì chờ cả màn hình đổi
                 if not core._wait(bot, config.TEAM_SWITCH_WAIT):
                     return
+                if idx + 1 < remaining and peek is not None:
+                    curScreen = peek()
+                    if curScreen is not None:
+                        nextCand = findNextTeamArrow(curScreen, ox, oy)
+                        if nextCand is None:
+                            exhausted = True
+                            targetTeam = (st.statsArrowClicks if st is not None else idx + 1) + 1
+                            bot._log(f"🔎 Đã tới team cuối trong bảng Thành tích (team #{targetTeam}) — dừng chuyển team.")
+                            break
+                        nextArrow = nextCand
+                        _snapshotIfArrowMoved(bot, nextArrow, curScreen, statsItems, statsRect)
             statsScreen, ox, oy, statsRect, statsItems = core._scanGame(bot)
             if statsScreen is None:
                 return
         else:
             # Bảng Thành tích (đã lọc đội sở hữu) chỉ có 1 đội hoặc đã hết danh sách — không phải lỗi bot
+            exhausted = True
             targetTeam = clicksDone + 1
             bot._log(f"🔎 Bảng Thành tích không có nút chuyển team (chỉ có {targetTeam} đội phù hợp / đã hết danh sách)"
                      f" — chép team #{targetTeam}.")
@@ -102,7 +117,7 @@ def applyStatsModalTeam(bot, statsScreen, ox: int, oy: int, statsRect, statsItem
         if st is not None:
             st.statsArrowClicks = 0
             if clicked:
-                st.teamCursor = targetTeam
+                st.teamCursor = 0 if exhausted else targetTeam
                 st.needTeamChange = False
         core._settle(bot, statsScreen, 2.0) if clicked else core._wait(bot, 1.0)
     else:
@@ -115,6 +130,7 @@ def handlePickTeamInStats(bot, st: AfkLoopState, prepFrame=None):
     """Ở màn chuẩn bị đấu (sau 'Thử Lại' hoặc vào lại từ sảnh): mở 'Thành tích' và chép team kế tiếp."""
     core = _core()
     st.needTeamChange = False  # Chỉ thử 1 lần mỗi lần thua, tránh mở Thành tích lặp mãi nếu có lỗi
+    st.defeatCounted = False   # Đã qua bước click 'Thử Lại' thành công -> chu kỳ thua tiếp theo được tính bình thường
     # prepFrame = (screen, rect, items, statsHit) khi vòng lặp chính đã có sẵn khung hình -> khỏi OCR lại
     prep = (prepFrame[0], 0, 0, prepFrame[1], prepFrame[2], prepFrame[3]) if prepFrame else \
         scanUntilKey(bot, "stats", config.PREP_SCREEN_WAIT)

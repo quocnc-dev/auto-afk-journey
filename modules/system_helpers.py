@@ -146,16 +146,21 @@ def sendDesktopNotification(title: str, message: str) -> bool:
             subprocess.run(["osascript", "-e", script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
             return True
         if sys.platform == "win32":
-            safeTitle = (title or "").replace("'", "")
-            safeMsg = (message or "").replace("'", "").replace("\n", " ")
+            safeTitle = (title or "").replace("'", "''").replace("\r", " ").replace("\n", " ")
+            safeMsg = (message or "").replace("'", "''").replace("\r", " ").replace("\n", " ")
             ps = (
                 "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');"
                 "$n=New-Object System.Windows.Forms.NotifyIcon;"
                 "$n.Icon=[System.Drawing.SystemIcons]::Information;$n.Visible=$true;"
-                f"$n.ShowBalloonTip(4000,'{safeTitle}','{safeMsg}',[System.Windows.Forms.ToolTipIcon]::Info)"
+                f"$n.ShowBalloonTip(4000,'{safeTitle}','{safeMsg}',[System.Windows.Forms.ToolTipIcon]::Info);"
+                "Start-Sleep -Milliseconds 4200;$n.Visible=$false;$n.Dispose()"
             )
-            subprocess.Popen(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen(
+                ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
             return True
     except Exception as exc:
         logger.debug(f"Không gửi được desktop notification: {exc}")
